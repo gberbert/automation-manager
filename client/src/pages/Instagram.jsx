@@ -10,7 +10,7 @@ export default function Instagram() {
     const [settings, setSettings] = useState({
         instagramAccessToken: '',
         instagramAccountId: '',
-        geminiModel: 'gemini-1.5-flash', // Campo de modelo
+        geminiModel: 'gemini-2.5-flash', // Padrão atualizado
         instagramPromptTemplate: 'Crie uma legenda visualmente atraente para o Instagram sobre {topic}. Inclua emojis e 30 hashtags.',
         instagramContext: '',
         instagramTopics: []
@@ -98,54 +98,44 @@ export default function Instagram() {
                                 <input 
                                     list="gemini-models" 
                                     type="text"
-                                    value={settings.geminiModel || 'gemini-1.5-flash'}
+                                    value={settings.geminiModel || 'gemini-2.5-flash'}
                                     onChange={(e) => setSettings({ ...settings, geminiModel: e.target.value })}
                                     className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-mono text-sm"
                                 />
                                 <datalist id="gemini-models">
-                                    <option value="gemini-1.5-flash" />
-                                    <option value="gemini-1.5-flash-001" />
-                                    <option value="gemini-1.5-flash-002" />
-                                    <option value="gemini-1.5-pro" />
-                                    <option value="gemini-1.5-pro-001" />
+                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                    <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                                    <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
+                                    <option value="gemini-flash-latest">Gemini Flash Latest</option>
                                 </datalist>
-                            </div>
-                        </div>
-
-                        <div className="bg-blue-900/20 border border-blue-900/50 p-4 rounded-lg flex gap-3">
-                            <HelpCircle className="w-6 h-6 text-blue-400 flex-shrink-0" />
-                            <div className="text-sm text-gray-300 space-y-2">
-                                <p className="font-semibold text-blue-400">How to get these credentials:</p>
-                                <ol className="list-decimal list-inside space-y-1">
-                                    <li>Go to <a href="https://developers.facebook.com/" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Meta for Developers</a> and create an App.</li>
-                                    <li>Add "Instagram Graph API" product.</li>
-                                    <li>Use the Graph API Explorer to generate a User Access Token.</li>
-                                </ol>
                             </div>
                         </div>
 
                         <div className="space-y-2">
                             <label className="text-sm text-gray-400">Instagram Access Token</label>
-                            <input type="password" value={settings.instagramAccessToken || ''} onChange={(e) => setSettings({ ...settings, instagramAccessToken: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none" placeholder="EAAG..." />
+                            <input type="password" value={settings.instagramAccessToken || ''} onChange={(e) => setSettings({ ...settings, instagramAccessToken: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none" />
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm text-gray-400">Instagram Business Account ID</label>
-                            <input type="text" value={settings.instagramAccountId || ''} onChange={(e) => setSettings({ ...settings, instagramAccountId: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none" placeholder="17841..." />
+                            <input type="text" value={settings.instagramAccountId || ''} onChange={(e) => setSettings({ ...settings, instagramAccountId: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none" />
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* Prompt Tab */}
             {activeTab === 'prompt' && (
                 <div className="space-y-6 animate-fadeIn">
+                    {/* Mesma estrutura de Prompt/Context/Topics do arquivo anterior... */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
                             <h3 className="text-xl font-semibold text-pink-400">1. Prompt Base</h3>
-                            <textarea rows={8} value={settings.instagramPromptTemplate || ''} onChange={(e) => setSettings({ ...settings, instagramPromptTemplate: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none font-mono text-sm" placeholder="Ex: Crie uma legenda para Instagram..." />
+                            <textarea rows={8} value={settings.instagramPromptTemplate || ''} onChange={(e) => setSettings({ ...settings, instagramPromptTemplate: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none font-mono text-sm" />
                         </div>
                         <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
                             <h3 className="text-xl font-semibold text-yellow-400">2. Contexto (Opcional)</h3>
-                            <textarea rows={8} value={settings.instagramContext || ''} onChange={(e) => setSettings({ ...settings, instagramContext: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-mono text-sm" placeholder="Ex: Foque em Reels..." />
+                            <textarea rows={8} value={settings.instagramContext || ''} onChange={(e) => setSettings({ ...settings, instagramContext: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-mono text-sm" />
                         </div>
                     </div>
                     <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-6">
