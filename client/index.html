@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/png" href="/pwa-192x192.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>client</title>
+</head>
+
+<body>
+  <div id="global-error-display"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100vh; background-color: #1a1a1a; color: #ff5555; padding: 20px; z-index: 9999; overflow: auto; font-family: monospace;">
+    <h2 style="border-bottom: 1px solid #ff5555; padding-bottom: 10px;">Application Error</h2>
+    <p id="global-error-message" style="font-size: 1.2em; margin: 20px 0;"></p>
+    <pre id="global-error-stack"
+      style="background: #000; padding: 15px; border-radius: 5px; white-space: pre-wrap;"></pre>
+    <button onclick="window.location.reload()"
+      style="margin-top: 20px; padding: 10px 20px; background: #ff5555; color: white; border: none; border-radius: 4px; cursor: pointer;">Reload
+      Page</button>
+  </div>
+  <script>
+    window.onerror = function (message, source, lineno, colno, error) {
+      const display = document.getElementById('global-error-display');
+      const msgElem = document.getElementById('global-error-message');
+      const stackElem = document.getElementById('global-error-stack');
+
+      if (display && msgElem && stackElem) {
+        display.style.display = 'block';
+        msgElem.textContent = message;
+        stackElem.textContent = error ? error.stack : `Source: ${source}:${lineno}:${colno}`;
+      }
+    };
+
+    window.onunhandledrejection = function (event) {
+      const display = document.getElementById('global-error-display');
+      const msgElem = document.getElementById('global-error-message');
+      const stackElem = document.getElementById('global-error-stack');
+
+      if (display && msgElem && stackElem) {
+        display.style.display = 'block';
+        msgElem.textContent = 'Unhandled Promise Rejection: ' + event.reason;
+        stackElem.textContent = event.reason ? event.reason.stack : '';
+      }
+    };
+  </script>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
+</html>
