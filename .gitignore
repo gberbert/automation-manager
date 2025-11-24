@@ -27,6 +27,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+.ps1
+
 automation-manager-31e5a-firebase-adminsdk-fbsvc-3df9ff56ef.json
 serviceAccountKey.json
 CONTEXTO_COMPLETO_PROJETO.txt

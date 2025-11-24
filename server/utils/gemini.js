@@ -7,60 +7,76 @@ async function generatePost(settings) {
     }
 
     if (!settings.topics || settings.topics.length === 0) {
-        console.error("No topics configured");
+        console.error("No topics configured in the pool");
         return null;
     }
 
-    // Pick a random topic
-    const topic = settings.topics[Math.floor(Math.random() * settings.topics.length)];
+    // 1. SORTEIO: Pega APENAS UM tópico do pool para este post
+    const randomTopic = settings.topics[Math.floor(Math.random() * settings.topics.length)];
+    console.log(`🎲 Tópico sorteado: "${randomTopic}"`);
 
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    // Usando modelo estável (flash-latest pode ser instável)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const languageInstruction = settings.language === 'pt-BR'
         ? "Write the post in Portuguese (Brazil)."
         : "Write the post in English.";
 
-    const prompt = settings.promptTemplate.replace('{topic}', topic) +
-        `\n\n${languageInstruction} Also provide a short description for an image that would go well with this post. Return the response in JSON format with keys: 'content' and 'imagePrompt'.`;
+    // 2. CONTEXTO ADICIONAL (Se o usuário preencheu)
+    const contextPart = settings.context 
+        ? `\n\nCONTEXTO/INSTRUÇÕES ADICIONAIS:\n${settings.context}` 
+        : "";
+
+    // 3. MONTAGEM DO PROMPT FINAL
+    const finalPrompt = `
+    ${settings.promptTemplate}
+
+    TÓPICO ESPECÍFICO DESTE POST:
+    "${randomTopic}"
+    ${contextPart}
+
+    ${languageInstruction}
+    
+    OUTPUT INSTRUCTIONS:
+    Provide a JSON response with keys: 'content' (the LinkedIn post text) and 'imagePrompt' (description for an image).
+    Do not include markdown formatting like \`\`\`json.
+    `;
 
     try {
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(finalPrompt);
         const response = await result.response;
         let text = response.text();
 
-        // Clean up markdown code blocks if present
+        // Limpeza de markdown
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
         let data;
         try {
-            // Try to find the first '{' and last '}' to extract JSON
             const firstOpen = text.indexOf('{');
             const lastClose = text.lastIndexOf('}');
             if (firstOpen !== -1 && lastClose !== -1) {
-                const jsonStr = text.substring(firstOpen, lastClose + 1);
-                data = JSON.parse(jsonStr);
+                data = JSON.parse(text.substring(firstOpen, lastClose + 1));
             } else {
                 throw new Error("No JSON found");
             }
         } catch (e) {
-            console.error("Failed to parse JSON from Gemini response", text);
-            // Fallback: treat the whole text as content
+            console.error("JSON Parse failed:", text);
+            // Fallback robusto
             data = {
                 content: text,
-                imagePrompt: "Professional business workspace with technology"
+                imagePrompt: `Professional illustration about ${randomTopic}`
             };
         }
 
-        // Use Pollinations.ai to generate an actual AI image based on the prompt
-        const imagePrompt = data.imagePrompt || "Professional business workspace with technology";
+        // Geração da Imagem via Pollinations
+        const imagePrompt = data.imagePrompt || `Professional illustration about ${randomTopic}`;
         const encodedPrompt = encodeURIComponent(imagePrompt);
-        // Add a random seed to prevent caching of the same image for the same prompt
         const randomSeed = Math.floor(Math.random() * 1000);
         const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${randomSeed}`;
 
         return {
-            topic,
+            topic: randomTopic, // Salva o tópico sorteado no post
             content: data.content,
             imagePrompt: imagePrompt,
             imageUrl: imageUrl

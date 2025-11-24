@@ -6,10 +6,13 @@ import { Save, Plus, Trash2, Instagram as InstagramIcon, MessageSquare, Key, Hel
 export default function Instagram() {
     const [activeTab, setActiveTab] = useState('connection');
     const [loading, setLoading] = useState(false);
+
     const [settings, setSettings] = useState({
         instagramAccessToken: '',
         instagramAccountId: '',
-        instagramPromptTemplate: 'Create a visually appealing Instagram caption about {topic}. Include emojis and 30 hashtags.',
+        // Configurações de Prompt
+        instagramPromptTemplate: 'Crie uma legenda visualmente atraente para o Instagram sobre {topic}. Inclua emojis e 30 hashtags.',
+        instagramContext: '', // NOVO CAMPO DE CONTEXTO
         instagramTopics: []
     });
     const [newTopic, setNewTopic] = useState('');
@@ -54,7 +57,7 @@ export default function Instagram() {
     };
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 pb-20">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center gap-3">
                     <div className="p-3 bg-pink-600/20 rounded-xl">
@@ -76,29 +79,23 @@ export default function Instagram() {
             <div className="flex space-x-4 border-b border-gray-700">
                 <button
                     onClick={() => setActiveTab('connection')}
-                    className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'connection' ? 'text-pink-400' : 'text-gray-400 hover:text-white'
-                        }`}
+                    className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'connection' ? 'text-pink-400' : 'text-gray-400 hover:text-white'}`}
                 >
                     <div className="flex items-center gap-2">
                         <Key className="w-4 h-4" />
                         Connection
                     </div>
-                    {activeTab === 'connection' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-pink-400 rounded-t-full" />
-                    )}
+                    {activeTab === 'connection' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-pink-400 rounded-t-full" />}
                 </button>
                 <button
                     onClick={() => setActiveTab('prompt')}
-                    className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'prompt' ? 'text-pink-400' : 'text-gray-400 hover:text-white'
-                        }`}
+                    className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'prompt' ? 'text-pink-400' : 'text-gray-400 hover:text-white'}`}
                 >
                     <div className="flex items-center gap-2">
                         <MessageSquare className="w-4 h-4" />
                         Prompt & Topics
                     </div>
-                    {activeTab === 'prompt' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-pink-400 rounded-t-full" />
-                    )}
+                    {activeTab === 'prompt' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-pink-400 rounded-t-full" />}
                 </button>
             </div>
 
@@ -146,25 +143,48 @@ export default function Instagram() {
                 </div>
             )}
 
-            {/* Prompt Tab */}
+            {/* Prompt Tab (ATUALIZADO COM CONTEXTO E GRID) */}
             {activeTab === 'prompt' && (
                 <div className="space-y-6 animate-fadeIn">
-                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
-                        <h3 className="text-xl font-semibold text-purple-400">Prompt Configuration</h3>
-                        <div className="space-y-2">
-                            <label className="text-sm text-gray-400">Prompt Template</label>
-                            <textarea
-                                rows={6}
-                                value={settings.instagramPromptTemplate || ''}
-                                onChange={(e) => setSettings({ ...settings, instagramPromptTemplate: e.target.value })}
-                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none font-mono text-sm"
-                            />
-                            <p className="text-xs text-gray-500">Use {'{topic}'} as a placeholder for the selected topic.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* 1. Prompt Base */}
+                        <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
+                            <h3 className="text-xl font-semibold text-pink-400">1. Prompt Base (Configuração)</h3>
+                            <div className="space-y-2">
+                                <label className="text-sm text-gray-400">Estrutura Principal</label>
+                                <textarea
+                                    rows={8}
+                                    value={settings.instagramPromptTemplate || ''}
+                                    onChange={(e) => setSettings({ ...settings, instagramPromptTemplate: e.target.value })}
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-pink-500 outline-none font-mono text-sm"
+                                    placeholder="Ex: Crie uma legenda para Instagram..."
+                                />
+                                <p className="text-xs text-gray-500">Template fixo para posts do Instagram.</p>
+                            </div>
+                        </div>
+
+                        {/* 2. Contexto (NOVO) */}
+                        <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
+                            <h3 className="text-xl font-semibold text-yellow-400">2. Contexto (Opcional)</h3>
+                            <div className="space-y-2">
+                                <label className="text-sm text-gray-400">Instruções Temporárias</label>
+                                <textarea
+                                    rows={8}
+                                    value={settings.instagramContext || ''}
+                                    onChange={(e) => setSettings({ ...settings, instagramContext: e.target.value })}
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-mono text-sm"
+                                    placeholder="Ex: Use muitas hashtags de verão... / Foque em Reels..."
+                                />
+                                <p className="text-xs text-gray-500">Adiciona contexto específico sem alterar a base.</p>
+                            </div>
                         </div>
                     </div>
 
+                    {/* 3. Topics Pool */}
                     <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-6">
-                        <h3 className="text-xl font-semibold text-green-400">Topics Pool</h3>
+                        <h3 className="text-xl font-semibold text-green-400">3. Topics Pool (Sorteio)</h3>
+                        <p className="text-sm text-gray-400">O sistema sorteará <strong>1 tópico</strong> desta lista para combinar com o Prompt.</p>
+                        
                         <div className="flex flex-col md:flex-row gap-4">
                             <input
                                 type="text"

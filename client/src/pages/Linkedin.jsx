@@ -6,7 +6,7 @@ import { Save, Plus, Trash2, Linkedin as LinkedinIcon, MessageSquare, Key, Eye, 
 export default function Linkedin() {
     const [activeTab, setActiveTab] = useState('connection');
     const [loading, setLoading] = useState(false);
-    const [showSecret, setShowSecret] = useState(false); // Novo estado para o ícone
+    const [showSecret, setShowSecret] = useState(false);
 
     const [settings, setSettings] = useState({
         linkedinClientId: '',
@@ -14,7 +14,9 @@ export default function Linkedin() {
         linkedinRedirectUri: '',
         linkedinAccessToken: '',
         linkedinUrn: '',
-        promptTemplate: 'Create a professional LinkedIn post about {topic}. Include a catchy headline and hashtags.',
+        // Configurações de Prompt
+        promptTemplate: 'Crie um post profissional para o LinkedIn.', // Prompt Base
+        context: '', // NOVO CAMPO DE CONTEXTO
         topics: []
     });
     const [newTopic, setNewTopic] = useState('');
@@ -111,7 +113,6 @@ export default function Linkedin() {
                         />
                     </div>
 
-                    {/* CAMPO COM ÍCONE DE OLHO */}
                     <div className="space-y-2">
                         <label className="text-sm text-gray-400">LinkedIn Client Secret</label>
                         <div className="relative flex items-center">
@@ -162,7 +163,6 @@ export default function Linkedin() {
                                     alert("Please save Client ID and Redirect URI first!");
                                     return;
                                 }
-                                // Escopo atualizado para incluir openid, profile e email
                                 const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${settings.linkedinClientId}&redirect_uri=${encodeURIComponent(settings.linkedinRedirectUri)}&scope=openid%20profile%20email%20w_member_social`;
                                 window.open(authUrl, 'LinkedIn OAuth', 'width=600,height=700');
                             }}
@@ -194,22 +194,45 @@ export default function Linkedin() {
             {/* Prompt Tab */}
             {activeTab === 'prompt' && (
                 <div className="space-y-6 animate-fadeIn">
-                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
-                        <h3 className="text-xl font-semibold text-purple-400">Prompt Configuration</h3>
-                        <div className="space-y-2">
-                            <label className="text-sm text-gray-400">Prompt Template</label>
-                            <textarea
-                                rows={6}
-                                value={settings.promptTemplate || ''}
-                                onChange={(e) => setSettings({ ...settings, promptTemplate: e.target.value })}
-                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 outline-none font-mono text-sm"
-                            />
-                            <p className="text-xs text-gray-500">Use {'{topic}'} as a placeholder for the selected topic.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* 1. Prompt Base */}
+                        <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
+                            <h3 className="text-xl font-semibold text-purple-400">1. Prompt Base (Configuração)</h3>
+                            <div className="space-y-2">
+                                <label className="text-sm text-gray-400">Estrutura Principal</label>
+                                <textarea
+                                    rows={8}
+                                    value={settings.promptTemplate || ''}
+                                    onChange={(e) => setSettings({ ...settings, promptTemplate: e.target.value })}
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-mono text-sm"
+                                    placeholder="Ex: Aja como um especialista..."
+                                />
+                                <p className="text-xs text-gray-500">Esta é a base fixa para todos os posts.</p>
+                            </div>
+                        </div>
+
+                        {/* 2. Contexto (NOVO) */}
+                        <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
+                            <h3 className="text-xl font-semibold text-yellow-400">2. Contexto (Opcional)</h3>
+                            <div className="space-y-2">
+                                <label className="text-sm text-gray-400">Instruções Temporárias</label>
+                                <textarea
+                                    rows={8}
+                                    value={settings.context || ''}
+                                    onChange={(e) => setSettings({ ...settings, context: e.target.value })}
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-mono text-sm"
+                                    placeholder="Ex: Foque em vendas B2B esta semana... / Use tom humorístico..."
+                                />
+                                <p className="text-xs text-gray-500">Adiciona informações extras ao prompt sem alterar a base.</p>
+                            </div>
                         </div>
                     </div>
 
+                    {/* 3. Topics Pool */}
                     <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-6">
-                        <h3 className="text-xl font-semibold text-green-400">Topics Pool</h3>
+                        <h3 className="text-xl font-semibold text-green-400">3. Topics Pool (Sorteio)</h3>
+                        <p className="text-sm text-gray-400">O sistema sorteará <strong>1 tópico</strong> desta lista para combinar com o Prompt Base.</p>
+                        
                         <div className="flex flex-col md:flex-row gap-4">
                             <input
                                 type="text"
