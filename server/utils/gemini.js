@@ -11,26 +11,27 @@ async function generatePost(settings) {
         return null;
     }
 
-    // 1. SORTEIO: Pega APENAS UM tópico do pool para este post
+    // 1. SORTEIO
     const randomTopic = settings.topics[Math.floor(Math.random() * settings.topics.length)];
     console.log(`🎲 Tópico sorteado: "${randomTopic}"`);
 
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     
-    // CORREÇÃO AQUI: Usando o nome específico da versão que não dá erro 404
-    // Se 'gemini-1.5-flash' falhar, 'gemini-1.5-flash-latest' costuma resolver
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+    // --- CORREÇÃO DO MODELO ---
+    // Usando o alias estável padrão.
+    // Se der erro 503 (Overloaded), é momentâneo do Google, tente novamente em 1 min.
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const languageInstruction = settings.language === 'pt-BR'
         ? "Write the post in Portuguese (Brazil)."
         : "Write the post in English.";
 
-    // 2. CONTEXTO ADICIONAL (Se o usuário preencheu)
+    // 2. CONTEXTO
     const contextPart = settings.context 
         ? `\n\nCONTEXTO/INSTRUÇÕES ADICIONAIS:\n${settings.context}` 
         : "";
 
-    // 3. MONTAGEM DO PROMPT FINAL
+    // 3. PROMPT
     const finalPrompt = `
     ${settings.promptTemplate}
 
@@ -50,7 +51,6 @@ async function generatePost(settings) {
         const response = await result.response;
         let text = response.text();
 
-        // Limpeza de markdown
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
         let data;
@@ -64,28 +64,27 @@ async function generatePost(settings) {
             }
         } catch (e) {
             console.error("JSON Parse failed:", text);
-            // Fallback robusto
             data = {
                 content: text,
                 imagePrompt: `Professional illustration about ${randomTopic}`
             };
         }
 
-        // Geração da Imagem via Pollinations
         const imagePrompt = data.imagePrompt || `Professional illustration about ${randomTopic}`;
         const encodedPrompt = encodeURIComponent(imagePrompt);
         const randomSeed = Math.floor(Math.random() * 1000);
         const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${randomSeed}`;
 
         return {
-            topic: randomTopic, // Salva o tópico sorteado no post
+            topic: randomTopic,
             content: data.content,
             imagePrompt: imagePrompt,
             imageUrl: imageUrl
         };
 
     } catch (error) {
-        console.error("Gemini generation error:", error);
+        // Log detalhado para sabermos se é 404 (nome errado) ou 503 (servidor cheio)
+        console.error("Gemini generation error:", error.message);
         return null;
     }
 }
