@@ -16,8 +16,10 @@ async function generatePost(settings) {
     console.log(`🎲 Tópico sorteado: "${randomTopic}"`);
 
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
-    // Usando modelo estável (flash-latest pode ser instável)
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    // CORREÇÃO AQUI: Usando o nome específico da versão que não dá erro 404
+    // Se 'gemini-1.5-flash' falhar, 'gemini-1.5-flash-latest' costuma resolver
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
     const languageInstruction = settings.language === 'pt-BR'
         ? "Write the post in Portuguese (Brazil)."
