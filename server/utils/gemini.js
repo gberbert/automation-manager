@@ -6,34 +6,40 @@ async function generatePost(settings) {
         return null;
     }
 
-    if (!settings.topics || settings.topics.length === 0) {
-        console.error("No topics configured in the pool");
+    // Verifica se há tópicos do LinkedIn ou Instagram (Generic pool)
+    const pool = settings.topics && settings.topics.length > 0 ? settings.topics : settings.instagramTopics;
+    
+    if (!pool || pool.length === 0) {
+        console.error("No topics configured in any pool");
         return null;
     }
 
     // 1. SORTEIO
-    const randomTopic = settings.topics[Math.floor(Math.random() * settings.topics.length)];
+    const randomTopic = pool[Math.floor(Math.random() * pool.length)];
     console.log(`🎲 Tópico sorteado: "${randomTopic}"`);
 
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     
-    // --- CORREÇÃO FINAL DE MODELO ---
-    // Usando a versão ESPECÍFICA '002'. Isso evita erro 404 de alias não encontrado.
-    // Se ainda der 404, troque por "gemini-1.5-flash-001"
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
+    // --- MODELO DINÂMICO ---
+    // Usa o modelo escolhido pelo usuário ou o padrão estável
+    const modelName = settings.geminiModel || "gemini-1.5-flash";
+    console.log(`🧠 Usando modelo: ${modelName}`);
+    
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const languageInstruction = settings.language === 'pt-BR'
         ? "Write the post in Portuguese (Brazil)."
         : "Write the post in English.";
 
-    // 2. CONTEXTO
-    const contextPart = settings.context 
-        ? `\n\nCONTEXTO/INSTRUÇÕES ADICIONAIS:\n${settings.context}` 
-        : "";
+    // 2. CONTEXTO (Usa o do LinkedIn ou Instagram dependendo de qual estiver preenchido, ou ambos)
+    const contextVal = settings.context || settings.instagramContext || "";
+    const contextPart = contextVal ? `\n\nCONTEXTO/INSTRUÇÕES ADICIONAIS:\n${contextVal}` : "";
 
-    // 3. PROMPT
+    // 3. PROMPT BASE (Usa o padrão ou do Instagram)
+    const template = settings.promptTemplate || settings.instagramPromptTemplate || "Crie um post sobre {topic}";
+
     const finalPrompt = `
-    ${settings.promptTemplate}
+    ${template}
 
     TÓPICO ESPECÍFICO DESTE POST:
     "${randomTopic}"
@@ -42,7 +48,7 @@ async function generatePost(settings) {
     ${languageInstruction}
     
     OUTPUT INSTRUCTIONS:
-    Provide a JSON response with keys: 'content' (the LinkedIn post text) and 'imagePrompt' (description for an image).
+    Provide a JSON response with keys: 'content' (the post text) and 'imagePrompt' (description for an image).
     Do not include markdown formatting like \`\`\`json.
     `;
 
@@ -83,11 +89,7 @@ async function generatePost(settings) {
         };
 
     } catch (error) {
-        console.error("Gemini generation error:", error.message);
-        // Dica extra no log se der erro de novo
-        if (error.message.includes('404')) {
-            console.error("DICA: Tente trocar o modelo no código para 'gemini-1.5-pro-002' ou 'gemini-1.5-flash-001'");
-        }
+        console.error(`Gemini generation error (${modelName}):`, error.message);
         return null;
     }
 }
