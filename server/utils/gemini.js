@@ -6,38 +6,31 @@ async function generatePost(settings) {
         return null;
     }
 
-    // Verifica se há tópicos do LinkedIn ou Instagram (Generic pool)
+    // Pool logic...
     const pool = settings.topics && settings.topics.length > 0 ? settings.topics : settings.instagramTopics;
-    
     if (!pool || pool.length === 0) {
-        console.error("No topics configured in any pool");
+        console.error("No topics configured");
         return null;
     }
 
-    // 1. SORTEIO
     const randomTopic = pool[Math.floor(Math.random() * pool.length)];
     console.log(`🎲 Tópico sorteado: "${randomTopic}"`);
 
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     
-    // --- MODELO DINÂMICO ---
-    // Usa o modelo escolhido pelo usuário ou o padrão estável
+    // Modelo de Texto (Mantemos o que funciona)
     const modelName = settings.geminiModel || "gemini-1.5-flash";
-    console.log(`🧠 Usando modelo: ${modelName}`);
-    
     const model = genAI.getGenerativeModel({ model: modelName });
 
     const languageInstruction = settings.language === 'pt-BR'
         ? "Write the post in Portuguese (Brazil)."
         : "Write the post in English.";
 
-    // 2. CONTEXTO (Usa o do LinkedIn ou Instagram dependendo de qual estiver preenchido, ou ambos)
     const contextVal = settings.context || settings.instagramContext || "";
     const contextPart = contextVal ? `\n\nCONTEXTO/INSTRUÇÕES ADICIONAIS:\n${contextVal}` : "";
-
-    // 3. PROMPT BASE (Usa o padrão ou do Instagram)
     const template = settings.promptTemplate || settings.instagramPromptTemplate || "Crie um post sobre {topic}";
 
+    // Prompt ajustado para pedir descrição visual melhor
     const finalPrompt = `
     ${template}
 
@@ -49,6 +42,7 @@ async function generatePost(settings) {
     
     OUTPUT INSTRUCTIONS:
     Provide a JSON response with keys: 'content' (the post text) and 'imagePrompt' (description for an image).
+    For 'imagePrompt', describe a highly photorealistic, cinematic, professional image suitable for LinkedIn business context. Avoid cartoons or abstract art descriptions unless requested.
     Do not include markdown formatting like \`\`\`json.
     `;
 
@@ -72,14 +66,18 @@ async function generatePost(settings) {
             console.error("JSON Parse failed:", text);
             data = {
                 content: text,
-                imagePrompt: `Professional illustration about ${randomTopic}`
+                imagePrompt: `Professional office photography about ${randomTopic}, cinematic lighting, 4k`
             };
         }
 
-        const imagePrompt = data.imagePrompt || `Professional illustration about ${randomTopic}`;
+        const imagePrompt = data.imagePrompt || `Professional office photography about ${randomTopic}, cinematic lighting, 4k`;
         const encodedPrompt = encodeURIComponent(imagePrompt);
-        const randomSeed = Math.floor(Math.random() * 1000);
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&seed=${randomSeed}`;
+        
+        // --- O PULO DO GATO: USANDO O MODELO FLUX ---
+        // Adicionamos &model=flux para ativar a geração fotorrealista de alta qualidade
+        // Adicionamos seed aleatória para variar
+        const randomSeed = Math.floor(Math.random() * 100000);
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&model=flux&nologo=true&seed=${randomSeed}`;
 
         return {
             topic: randomTopic,

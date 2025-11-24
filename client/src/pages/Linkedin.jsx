@@ -14,7 +14,7 @@ export default function Linkedin() {
         linkedinRedirectUri: '',
         linkedinAccessToken: '',
         linkedinUrn: '',
-        geminiModel: 'gemini-2.5-flash', // Padrão atualizado para a versão que sua chave aceita
+        geminiModel: 'gemini-2.5-flash', // Padrão recomendado
         promptTemplate: 'Crie um post profissional para o LinkedIn.',
         context: '',
         topics: []
@@ -199,9 +199,65 @@ export default function Linkedin() {
             
             {activeTab === 'guide' && (
                 <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
-                    {/* Conteúdo do guia igual ao anterior... */}
-                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 text-center">
-                        <p className="text-gray-300">Guia de configuração disponível. (Mantido do código anterior para economizar espaço na resposta, mas está no seu arquivo)</p>
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 p-6 rounded-xl">
+                        <h3 className="text-xl font-bold text-yellow-400 flex items-center gap-2 mb-4">
+                            <AlertTriangle className="w-6 h-6" />
+                            Antes de Começar
+                        </h3>
+                        <p className="text-gray-300">
+                            A integração com o LinkedIn é estrita. Siga este guia passo a passo para evitar erros comuns de permissão (403) ou token inválido (401).
+                        </p>
+                    </div>
+
+                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
+                        <h3 className="text-lg font-bold text-blue-400 flex items-center gap-2">
+                            <span className="bg-blue-500/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">1</span>
+                            Configuração do App (LinkedIn Developers)
+                        </h3>
+                        <ul className="space-y-3 text-gray-300 ml-4 list-disc pl-4">
+                            <li>Acesse o <a href="https://www.linkedin.com/developers/apps" target="_blank" rel="noreferrer" className="text-blue-400 underline">LinkedIn Developer Portal</a>.</li>
+                            <li>Crie um novo App e associe à sua Página (pessoal ou empresa).</li>
+                            <li><strong>CRUCIAL:</strong> Vá na aba <strong>Products</strong> e adicione estes dois produtos:
+                                <ul className="list-circle ml-6 mt-2 text-sm text-gray-400">
+                                    <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-green-500"/> <strong>Share on LinkedIn</strong> (Para postar)</li>
+                                    <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-green-500"/> <strong>Sign In with LinkedIn using OpenID Connect</strong> (Para logar)</li>
+                                </ul>
+                            </li>
+                            <li>Vá na aba <strong>Auth</strong> e adicione a URL de Redirecionamento exata:
+                                <div className="bg-black/30 p-2 rounded mt-1 font-mono text-xs text-yellow-200">
+                                    {window.location.origin}/auth/linkedin/callback
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
+                        <h3 className="text-lg font-bold text-green-400 flex items-center gap-2">
+                            <span className="bg-green-500/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">2</span>
+                            Conexão no Sistema
+                        </h3>
+                        <ul className="space-y-3 text-gray-300 ml-4 list-disc pl-4">
+                            <li>Na aba <strong>Connection</strong> (aqui mesmo), cole o <strong>Client ID</strong> e <strong>Client Secret</strong>.</li>
+                            <li>Clique em <strong>Save Changes</strong> antes de conectar.</li>
+                            <li>Clique em <strong>Connect LinkedIn Account</strong>.</li>
+                            <li>Na janela que abrir, verifique se as permissões pedem:
+                                <em className="block mt-1 text-gray-400">"Criar, modificar e excluir publicações" (w_member_social)</em>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
+                        <h3 className="text-lg font-bold text-red-400 flex items-center gap-2">
+                            <span className="bg-red-500/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">3</span>
+                            Solução de Problemas (Reset Total)
+                        </h3>
+                        <p className="text-gray-300 text-sm">Se você receber erros de "Access Denied" (403) mesmo com tudo configurado:</p>
+                        <ol className="space-y-3 text-gray-300 ml-4 list-decimal pl-4 text-sm">
+                            <li>Vá no LinkedIn (site principal) &gt; Configurações &gt; Privacidade dos dados &gt; Serviços permitidos.</li>
+                            <li>Remova o acesso do seu aplicativo "Automation Manager".</li>
+                            <li>Volte aqui, apague o campo <strong>LinkedIn URN</strong> (deixe vazio).</li>
+                            <li>Clique em <strong>Connect LinkedIn Account</strong> novamente para gerar um token limpo.</li>
+                        </ol>
                     </div>
                 </div>
             )}
