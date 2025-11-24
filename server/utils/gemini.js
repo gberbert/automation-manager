@@ -17,10 +17,10 @@ async function generatePost(settings) {
 
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     
-    // --- CORREÇÃO DO MODELO ---
-    // Usando o alias estável padrão.
-    // Se der erro 503 (Overloaded), é momentâneo do Google, tente novamente em 1 min.
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // --- CORREÇÃO FINAL DE MODELO ---
+    // Usando a versão ESPECÍFICA '002'. Isso evita erro 404 de alias não encontrado.
+    // Se ainda der 404, troque por "gemini-1.5-flash-001"
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
 
     const languageInstruction = settings.language === 'pt-BR'
         ? "Write the post in Portuguese (Brazil)."
@@ -83,8 +83,11 @@ async function generatePost(settings) {
         };
 
     } catch (error) {
-        // Log detalhado para sabermos se é 404 (nome errado) ou 503 (servidor cheio)
         console.error("Gemini generation error:", error.message);
+        // Dica extra no log se der erro de novo
+        if (error.message.includes('404')) {
+            console.error("DICA: Tente trocar o modelo no código para 'gemini-1.5-pro-002' ou 'gemini-1.5-flash-001'");
+        }
         return null;
     }
 }
