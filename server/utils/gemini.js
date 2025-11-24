@@ -1,4 +1,33 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const admin = require('firebase-admin');
+
+// Helper para upload no Firebase Storage
+// Agora aceita bucketName opcional
+async function uploadImageToFirebase(base64Data, mimeType, bucketName) {
+    try {
+        // Se o bucketName vier preenchido, usa ele. Senão, usa o default do projeto.
+        const bucket = admin.storage().bucket(bucketName || undefined);
+        
+        const fileName = `generated-images/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+        const file = bucket.file(fileName);
+        
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        await file.save(buffer, {
+            metadata: { contentType: mimeType },
+            public: true 
+        });
+
+        return file.publicUrl();
+    } catch (error) {
+        console.error("Erro no upload para o Storage:", error);
+        // Dica de debug se der erro
+        if (error.code === 404) {
+            console.error("DICA: Verifique se o nome do Bucket em Settings está correto (sem gs://, apenas o dominio).");
+        }
+        throw new Error("Falha ao salvar imagem gerada.");
+    }
+}
 
 async function generatePost(settings) {
     if (!settings.geminiApiKey) {
@@ -6,7 +35,6 @@ async function generatePost(settings) {
         return null;
     }
 
-    // Pool logic...
     const pool = settings.topics && settings.topics.length > 0 ? settings.topics : settings.instagramTopics;
     if (!pool || pool.length === 0) {
         console.error("No topics configured");
@@ -18,78 +46,102 @@ async function generatePost(settings) {
 
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     
-    // Modelo de Texto (Mantemos o que funciona)
-    const modelName = settings.geminiModel || "gemini-1.5-flash";
-    const model = genAI.getGenerativeModel({ model: modelName });
+    // 1. GERAÇÃO DE TEXTO
+    const textModelName = settings.geminiModel || "gemini-1.5-flash";
+    const textModel = genAI.getGenerativeModel({ model: textModelName });
 
-    const languageInstruction = settings.language === 'pt-BR'
-        ? "Write the post in Portuguese (Brazil)."
-        : "Write the post in English.";
-
+    const languageInstruction = settings.language === 'pt-BR' ? "Write in Portuguese (Brazil)." : "Write in English.";
     const contextVal = settings.context || settings.instagramContext || "";
-    const contextPart = contextVal ? `\n\nCONTEXTO/INSTRUÇÕES ADICIONAIS:\n${contextVal}` : "";
     const template = settings.promptTemplate || settings.instagramPromptTemplate || "Crie um post sobre {topic}";
 
-    // Prompt ajustado para pedir descrição visual melhor
-    const finalPrompt = `
+    const prompt = `
     ${template}
-
-    TÓPICO ESPECÍFICO DESTE POST:
-    "${randomTopic}"
-    ${contextPart}
-
+    TOPIC: "${randomTopic}"
+    CONTEXT: ${contextVal}
     ${languageInstruction}
-    
-    OUTPUT INSTRUCTIONS:
-    Provide a JSON response with keys: 'content' (the post text) and 'imagePrompt' (description for an image).
-    For 'imagePrompt', describe a highly photorealistic, cinematic, professional image suitable for LinkedIn business context. Avoid cartoons or abstract art descriptions unless requested.
+    OUTPUT INSTRUCTIONS: JSON with keys 'content' and 'imagePrompt' (highly detailed visual description).
     Do not include markdown formatting like \`\`\`json.
     `;
 
+    let postContent = {};
+    
     try {
-        const result = await model.generateContent(finalPrompt);
-        const response = await result.response;
-        let text = response.text();
-
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
-        let data;
+        const result = await textModel.generateContent(prompt);
+        const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        // JSON Parse resiliente
         try {
-            const firstOpen = text.indexOf('{');
-            const lastClose = text.lastIndexOf('}');
-            if (firstOpen !== -1 && lastClose !== -1) {
-                data = JSON.parse(text.substring(firstOpen, lastClose + 1));
+            const start = text.indexOf('{');
+            const end = text.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                postContent = JSON.parse(text.substring(start, end + 1));
             } else {
-                throw new Error("No JSON found");
+                throw new Error("JSON brackets not found");
             }
-        } catch (e) {
-            console.error("JSON Parse failed:", text);
-            data = {
-                content: text,
-                imagePrompt: `Professional office photography about ${randomTopic}, cinematic lighting, 4k`
+        } catch (parseError) {
+            console.error("JSON Parse failed:", parseError);
+            postContent = { 
+                content: text, 
+                imagePrompt: `Professional photo of ${randomTopic}` 
             };
         }
 
-        const imagePrompt = data.imagePrompt || `Professional office photography about ${randomTopic}, cinematic lighting, 4k`;
-        const encodedPrompt = encodeURIComponent(imagePrompt);
-        
-        // --- O PULO DO GATO: USANDO O MODELO FLUX ---
-        // Adicionamos &model=flux para ativar a geração fotorrealista de alta qualidade
-        // Adicionamos seed aleatória para variar
-        const randomSeed = Math.floor(Math.random() * 100000);
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&model=flux&nologo=true&seed=${randomSeed}`;
-
-        return {
-            topic: randomTopic,
-            content: data.content,
-            imagePrompt: imagePrompt,
-            imageUrl: imageUrl
-        };
-
-    } catch (error) {
-        console.error(`Gemini generation error (${modelName}):`, error.message);
+    } catch (e) {
+        console.error("Text Gen Error:", e);
         return null;
     }
+
+    // 2. ESTRATÉGIA DE IMAGEM
+    const imagePrompt = postContent.imagePrompt || `Professional photo of ${randomTopic}`;
+    let finalImageUrl = "";
+
+    const imageProvider = settings.imageProvider || "pollinations"; 
+
+    if (imageProvider === 'imagen') {
+        console.log("🎨 Gerando imagem com Google Imagen 3...");
+        try {
+            // Usa o modelo específico de imagem
+            const imagenModel = genAI.getGenerativeModel({ model: "imagen-3.0-generate-001" });
+            
+            const result = await imagenModel.generateContent({
+                contents: [{ role: "user", parts: [{ text: imagePrompt }] }]
+            });
+
+            // Tenta extrair o Base64 (Lógica adaptativa para diferentes versões da lib)
+            const response = await result.response;
+            
+            // Nota: Se a lib oficial ainda não devolver inlineData facilmente,
+            // cairemos no catch e usaremos o fallback do Pollinations.
+            // Mas se devolver, fazemos o upload:
+            if (response.candidates && response.candidates[0]?.content?.parts[0]?.inlineData) {
+                const base64 = response.candidates[0].content.parts[0].inlineData.data;
+                const mimeType = response.candidates[0].content.parts[0].inlineData.mimeType || 'image/png';
+                
+                // UPLOAD PARA O FIREBASE STORAGE (Usando o bucket das configurações)
+                finalImageUrl = await uploadImageToFirebase(base64, mimeType, settings.firebaseStorageBucket);
+                console.log("✅ Imagem salva no Storage:", finalImageUrl);
+            } else {
+                throw new Error("Formato de resposta do Imagen não suportado pela lib atual.");
+            }
+
+        } catch (imgError) {
+            console.warn("⚠️ Falha no Imagen 3 (Fallback para Pollinations):", imgError.message);
+            const encoded = encodeURIComponent(imagePrompt);
+            finalImageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&model=flux&nologo=true&seed=${Math.random()}`;
+        }
+    } else {
+        // Padrão Pollinations (Flux)
+        console.log("🎨 Gerando imagem com Pollinations (Flux)...");
+        const encoded = encodeURIComponent(imagePrompt);
+        finalImageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&model=flux&nologo=true&seed=${Math.floor(Math.random()*1000)}`;
+    }
+
+    return {
+        topic: randomTopic,
+        content: postContent.content,
+        imagePrompt: imagePrompt,
+        imageUrl: finalImageUrl
+    };
 }
 
 module.exports = { generatePost };

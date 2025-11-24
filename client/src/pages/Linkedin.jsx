@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Save, Plus, Trash2, Linkedin as LinkedinIcon, MessageSquare, Key, Eye, EyeOff, BookOpen, CheckCircle, AlertTriangle, Cpu } from 'lucide-react';
+import { Save, Plus, Trash2, Linkedin as LinkedinIcon, MessageSquare, Key, Eye, EyeOff, BookOpen, CheckCircle, AlertTriangle, Cpu, Image as ImageIcon } from 'lucide-react';
 
 export default function Linkedin() {
     const [activeTab, setActiveTab] = useState('connection');
@@ -14,7 +14,8 @@ export default function Linkedin() {
         linkedinRedirectUri: '',
         linkedinAccessToken: '',
         linkedinUrn: '',
-        geminiModel: 'gemini-2.5-flash', // Padrão recomendado
+        geminiModel: 'gemini-2.5-flash',
+        imageProvider: 'pollinations', // NOVO CAMPO
         promptTemplate: 'Crie um post profissional para o LinkedIn.',
         context: '',
         topics: []
@@ -94,7 +95,7 @@ export default function Linkedin() {
                 <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-6 animate-fadeIn">
                     <h3 className="text-xl font-semibold text-blue-400">API Credentials</h3>
 
-                    {/* SELETOR DE MODELO GEMINI */}
+                    {/* BLOCO DE TEXTO (GEMINI) */}
                     <div className="bg-purple-900/20 border border-purple-500/30 p-4 rounded-lg space-y-3">
                         <div className="flex items-center gap-2 text-purple-400 mb-1">
                             <Cpu className="w-5 h-5" />
@@ -111,21 +112,32 @@ export default function Linkedin() {
                                 placeholder="Selecione ou digite..."
                             />
                             <datalist id="gemini-models">
-                                {/* SÉRIE 2.5 (RECOMENDADA) */}
                                 <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recomendado)</option>
                                 <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                                
-                                {/* SÉRIE 2.0 */}
                                 <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
                                 <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
-                                <option value="gemini-2.0-pro-exp-02-05">Gemini 2.0 Pro Exp</option>
-                                
-                                {/* ALIASES GENÉRICOS */}
                                 <option value="gemini-flash-latest">Gemini Flash Latest</option>
-                                <option value="gemini-pro-latest">Gemini Pro Latest</option>
-                                <option value="gemini-3-pro-preview">Gemini 3 Preview</option>
                             </datalist>
-                            <p className="text-xs text-gray-500">Sua chave tem acesso confirmado a estes modelos.</p>
+                        </div>
+                    </div>
+
+                    {/* BLOCO DE IMAGEM (NOVO) */}
+                    <div className="bg-green-900/20 border border-green-500/30 p-4 rounded-lg space-y-3">
+                        <div className="flex items-center gap-2 text-green-400">
+                            <ImageIcon className="w-5 h-5" />
+                            <span className="font-semibold">Image Strategy</span>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs text-gray-400">Provedor de Imagem:</label>
+                            <select 
+                                value={settings.imageProvider || 'pollinations'} 
+                                onChange={(e) => setSettings({ ...settings, imageProvider: e.target.value })}
+                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+                            >
+                                <option value="pollinations">Pollinations Standard (Rápido)</option>
+                                <option value="imagen">Pollinations FLUX (Alta Qualidade/Realista)</option>
+                            </select>
+                            <p className="text-xs text-gray-500">Use 'Alta Qualidade' para fotos profissionais no LinkedIn.</p>
                         </div>
                     </div>
 

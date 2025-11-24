@@ -7,7 +7,8 @@ export default function Settings() {
     const [loading, setLoading] = useState(false);
     const [settings, setSettings] = useState({
         geminiApiKey: '',
-        scheduleCron: '0 9 * * *', // Default 9 AM daily
+        firebaseStorageBucket: '', // NOVO CAMPO
+        scheduleCron: '0 9 * * *', 
         language: 'en'
     });
 
@@ -17,11 +18,11 @@ export default function Settings() {
                 const docRef = doc(db, 'settings', 'global');
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    // Filtra apenas o que interessa para esta página para não sobrescrever o resto
                     const data = docSnap.data();
                     setSettings(prev => ({
                         ...prev,
                         geminiApiKey: data.geminiApiKey || '',
+                        firebaseStorageBucket: data.firebaseStorageBucket || '', // Carrega o bucket
                         scheduleCron: data.scheduleCron || '0 9 * * *',
                         language: data.language || 'en'
                     }));
@@ -66,7 +67,8 @@ export default function Settings() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fadeIn">
                 <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-6">
-                    <h3 className="text-xl font-semibold text-purple-400">AI Configuration</h3>
+                    <h3 className="text-xl font-semibold text-purple-400">AI & Cloud Configuration</h3>
+                    
                     <div className="space-y-2">
                         <label className="text-sm text-gray-400">Gemini API Key</label>
                         <input
@@ -78,6 +80,20 @@ export default function Settings() {
                         />
                         <p className="text-xs text-gray-500">Required for content generation.</p>
                     </div>
+
+                    {/* NOVO CAMPO: FIREBASE STORAGE BUCKET */}
+                    <div className="space-y-2">
+                        <label className="text-sm text-gray-400">Firebase Storage Bucket</label>
+                        <input
+                            type="text"
+                            value={settings.firebaseStorageBucket || ''}
+                            onChange={(e) => setSettings({ ...settings, firebaseStorageBucket: e.target.value })}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none"
+                            placeholder="ex: seu-projeto.firebasestorage.app"
+                        />
+                        <p className="text-xs text-gray-500">Opcional: Define onde salvar as imagens geradas (Imagen 3).</p>
+                    </div>
+
                     <div className="space-y-2">
                         <label className="text-sm text-gray-400">Language</label>
                         <select
