@@ -87,22 +87,25 @@ export default function Instagram() {
                             </datalist>
                         </div>
 
-                        {/* BLOCO DE IMAGEM (NOVO) */}
-                        <div className="bg-green-900/20 border border-green-500/30 p-4 rounded-lg space-y-3">
-                            <div className="flex items-center gap-2 text-green-400"><ImageIcon className="w-5 h-5" /><span className="font-semibold">Image Strategy</span></div>
-                            <div className="space-y-2">
-                                <label className="text-xs text-gray-400">Provedor de Imagem:</label>
-                                <select 
-                                    value={settings.imageProvider || 'pollinations'} 
-                                    onChange={(e) => setSettings({ ...settings, imageProvider: e.target.value })}
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-green-500 outline-none"
-                                >
-                                    <option value="pollinations">Pollinations Standard (Rápido)</option>
-                                    <option value="imagen">Pollinations FLUX (Alta Qualidade/Realista)</option>
-                                </select>
-                                <p className="text-xs text-gray-500">Use 'Alta Qualidade' para fotos realistas no Instagram.</p>
-                            </div>
-                        </div>
+						{/* SELETOR DE IMAGEM NO INSTAGRAM */}
+						<div className="bg-green-900/20 border border-green-500/30 p-4 rounded-lg space-y-3">
+							<div className="flex items-center gap-2 text-green-400">
+								<ImageIcon className="w-5 h-5" />
+								<span className="font-semibold">Image Strategy</span>
+							</div>
+							<div className="space-y-2">
+								<label className="text-xs text-gray-400">Provedor de Imagem:</label>
+								<select 
+									value={settings.imageProvider || 'pollinations'} 
+									onChange={(e) => setSettings({ ...settings, imageProvider: e.target.value })}
+									className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-green-500 outline-none"
+								>
+									<option value="pollinations">Pollinations Standard (Rápido/Cartoon)</option>
+									<option value="flux">Pollinations FLUX (Realista/Grátis)</option>
+									<option value="imagen">Google Imagen 3 (Requer Cloudinary)</option>
+								</select>
+							</div>
+						</div>
 
                         <div className="space-y-2">
                             <label className="text-sm text-gray-400">Instagram Access Token</label>

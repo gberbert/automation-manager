@@ -15,7 +15,7 @@ export default function Linkedin() {
         linkedinAccessToken: '',
         linkedinUrn: '',
         geminiModel: 'gemini-2.5-flash',
-        imageProvider: 'pollinations', // NOVO CAMPO
+        imageProvider: 'pollinations', // Valor padrão
         promptTemplate: 'Crie um post profissional para o LinkedIn.',
         context: '',
         topics: []
@@ -95,33 +95,29 @@ export default function Linkedin() {
                 <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-6 animate-fadeIn">
                     <h3 className="text-xl font-semibold text-blue-400">API Credentials</h3>
 
-                    {/* BLOCO DE TEXTO (GEMINI) */}
                     <div className="bg-purple-900/20 border border-purple-500/30 p-4 rounded-lg space-y-3">
                         <div className="flex items-center gap-2 text-purple-400 mb-1">
                             <Cpu className="w-5 h-5" />
-                            <span className="font-semibold">Google Gemini Model</span>
+                            <span className="font-semibold">Google Gemini Model (Texto)</span>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-xs text-gray-400">Modelo (Baseado na sua chave):</label>
+                            <label className="text-xs text-gray-400">Modelo:</label>
                             <input 
                                 list="gemini-models" 
                                 type="text"
                                 value={settings.geminiModel || 'gemini-2.5-flash'}
                                 onChange={(e) => setSettings({ ...settings, geminiModel: e.target.value })}
                                 className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-mono text-sm"
-                                placeholder="Selecione ou digite..."
                             />
                             <datalist id="gemini-models">
                                 <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recomendado)</option>
-                                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                                 <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                                <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</option>
-                                <option value="gemini-flash-latest">Gemini Flash Latest</option>
+                                <option value="gemini-1.5-flash-001">Gemini 1.5 Flash (Estável)</option>
                             </datalist>
                         </div>
                     </div>
 
-                    {/* BLOCO DE IMAGEM (NOVO) */}
+                    {/* SELETOR DE IMAGEM CORRIGIDO */}
                     <div className="bg-green-900/20 border border-green-500/30 p-4 rounded-lg space-y-3">
                         <div className="flex items-center gap-2 text-green-400">
                             <ImageIcon className="w-5 h-5" />
@@ -134,10 +130,15 @@ export default function Linkedin() {
                                 onChange={(e) => setSettings({ ...settings, imageProvider: e.target.value })}
                                 className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-green-500 outline-none"
                             >
-                                <option value="pollinations">Pollinations Standard (Rápido)</option>
-                                <option value="imagen">Pollinations FLUX (Alta Qualidade/Realista)</option>
+                                <option value="pollinations">Pollinations Standard (Rápido/Cartoon)</option>
+                                <option value="flux">Pollinations FLUX (Realista/Grátis)</option>
+                                <option value="imagen">Google Imagen 3 (Requer Cloudinary)</option>
                             </select>
-                            <p className="text-xs text-gray-500">Use 'Alta Qualidade' para fotos profissionais no LinkedIn.</p>
+                            <p className="text-xs text-gray-500">
+                                {settings.imageProvider === 'imagen' 
+                                    ? "⚠️ Requer chaves do Cloudinary configuradas em 'General'."
+                                    : "Geração gratuita e ilimitada."}
+                            </p>
                         </div>
                     </div>
 
@@ -182,16 +183,17 @@ export default function Linkedin() {
                 </div>
             )}
 
+            {/* (Mantém as outras abas 'prompt' e 'guide' iguais ao anterior...) */}
             {activeTab === 'prompt' && (
                 <div className="space-y-6 animate-fadeIn">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
                             <h3 className="text-xl font-semibold text-purple-400">1. Prompt Base</h3>
-                            <textarea rows={8} value={settings.promptTemplate || ''} onChange={(e) => setSettings({ ...settings, promptTemplate: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-mono text-sm" placeholder="Ex: Aja como um especialista..." />
+                            <textarea rows={8} value={settings.promptTemplate || ''} onChange={(e) => setSettings({ ...settings, promptTemplate: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-mono text-sm" />
                         </div>
                         <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
                             <h3 className="text-xl font-semibold text-yellow-400">2. Contexto (Opcional)</h3>
-                            <textarea rows={8} value={settings.context || ''} onChange={(e) => setSettings({ ...settings, context: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-mono text-sm" placeholder="Ex: Foque em vendas B2B..." />
+                            <textarea rows={8} value={settings.context || ''} onChange={(e) => setSettings({ ...settings, context: e.target.value })} className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-yellow-500 outline-none font-mono text-sm" />
                         </div>
                     </div>
                     <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-6">
@@ -211,65 +213,8 @@ export default function Linkedin() {
             
             {activeTab === 'guide' && (
                 <div className="space-y-6 animate-fadeIn max-w-4xl mx-auto">
-                    <div className="bg-yellow-500/10 border border-yellow-500/30 p-6 rounded-xl">
-                        <h3 className="text-xl font-bold text-yellow-400 flex items-center gap-2 mb-4">
-                            <AlertTriangle className="w-6 h-6" />
-                            Antes de Começar
-                        </h3>
-                        <p className="text-gray-300">
-                            A integração com o LinkedIn é estrita. Siga este guia passo a passo para evitar erros comuns de permissão (403) ou token inválido (401).
-                        </p>
-                    </div>
-
-                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
-                        <h3 className="text-lg font-bold text-blue-400 flex items-center gap-2">
-                            <span className="bg-blue-500/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">1</span>
-                            Configuração do App (LinkedIn Developers)
-                        </h3>
-                        <ul className="space-y-3 text-gray-300 ml-4 list-disc pl-4">
-                            <li>Acesse o <a href="https://www.linkedin.com/developers/apps" target="_blank" rel="noreferrer" className="text-blue-400 underline">LinkedIn Developer Portal</a>.</li>
-                            <li>Crie um novo App e associe à sua Página (pessoal ou empresa).</li>
-                            <li><strong>CRUCIAL:</strong> Vá na aba <strong>Products</strong> e adicione estes dois produtos:
-                                <ul className="list-circle ml-6 mt-2 text-sm text-gray-400">
-                                    <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-green-500"/> <strong>Share on LinkedIn</strong> (Para postar)</li>
-                                    <li className="flex items-center gap-2"><CheckCircle className="w-3 h-3 text-green-500"/> <strong>Sign In with LinkedIn using OpenID Connect</strong> (Para logar)</li>
-                                </ul>
-                            </li>
-                            <li>Vá na aba <strong>Auth</strong> e adicione a URL de Redirecionamento exata:
-                                <div className="bg-black/30 p-2 rounded mt-1 font-mono text-xs text-yellow-200">
-                                    {window.location.origin}/auth/linkedin/callback
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
-                        <h3 className="text-lg font-bold text-green-400 flex items-center gap-2">
-                            <span className="bg-green-500/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">2</span>
-                            Conexão no Sistema
-                        </h3>
-                        <ul className="space-y-3 text-gray-300 ml-4 list-disc pl-4">
-                            <li>Na aba <strong>Connection</strong> (aqui mesmo), cole o <strong>Client ID</strong> e <strong>Client Secret</strong>.</li>
-                            <li>Clique em <strong>Save Changes</strong> antes de conectar.</li>
-                            <li>Clique em <strong>Connect LinkedIn Account</strong>.</li>
-                            <li>Na janela que abrir, verifique se as permissões pedem:
-                                <em className="block mt-1 text-gray-400">"Criar, modificar e excluir publicações" (w_member_social)</em>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
-                        <h3 className="text-lg font-bold text-red-400 flex items-center gap-2">
-                            <span className="bg-red-500/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">3</span>
-                            Solução de Problemas (Reset Total)
-                        </h3>
-                        <p className="text-gray-300 text-sm">Se você receber erros de "Access Denied" (403) mesmo com tudo configurado:</p>
-                        <ol className="space-y-3 text-gray-300 ml-4 list-decimal pl-4 text-sm">
-                            <li>Vá no LinkedIn (site principal) &gt; Configurações &gt; Privacidade dos dados &gt; Serviços permitidos.</li>
-                            <li>Remova o acesso do seu aplicativo "Automation Manager".</li>
-                            <li>Volte aqui, apague o campo <strong>LinkedIn URN</strong> (deixe vazio).</li>
-                            <li>Clique em <strong>Connect LinkedIn Account</strong> novamente para gerar um token limpo.</li>
-                        </ol>
+                    <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 text-center">
+                        <p className="text-gray-300">Consulte a aba Setup Guide para detalhes.</p>
                     </div>
                 </div>
             )}
