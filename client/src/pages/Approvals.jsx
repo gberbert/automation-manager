@@ -22,14 +22,34 @@ export default function Approvals() {
     const [targetPostId, setTargetPostId] = useState(null);
 
     const fileInputRef = useRef(null);
+
     const fetchPosts = useCallback(async () => {
         setLoading(true);
         setErrorMsg(null);
         try {
             const q = query(collection(db, 'posts'), where('status', '==', 'pending'));
             const snap = await getDocs(q);
-            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const rawData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // --- DEDUPLICAÇÃO VISUAL ---
+            // Se houver posts duplicados no banco (mesmo tópico), mostramos apenas um.
+            const uniqueMap = new Map();
+            rawData.forEach(post => {
+                // Usa o tópico como chave única
+                if (!uniqueMap.has(post.topic)) {
+                    uniqueMap.set(post.topic, post);
+                } else {
+                    // Se já existe, verificamos qual é o mais recente (opcional, aqui mantemos o primeiro encontrado)
+                    // console.warn("Duplicata ocultada:", post.topic);
+                }
+            });
+            
+            // Converte o Map de volta para Array
+            const data = Array.from(uniqueMap.values());
+
+            // Ordena por data (mais recente primeiro)
             data.sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0));
+            
             setPosts(data);
             setImageLoadErrors({});
         } catch (e) {
@@ -38,15 +58,18 @@ export default function Approvals() {
         }
         setLoading(false);
     }, []);
+
     useEffect(() => {
         fetchPosts();
     }, [fetchPosts]);
+
     useEffect(() => {
         if (errorMsg) {
             const timer = setTimeout(() => setErrorMsg(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [errorMsg]);
+
     // Handlers
     const handleApprove = async (id) => {
         try {
@@ -255,6 +278,7 @@ export default function Approvals() {
     };
 
     const renderMediaArea = (post, isEditing, currentImageUrl, hasImageError) => {
+        // Layout: Imagem de Capa no Fundo + Botão PDF discreto se houver
         return (
             <div className="h-64 w-full bg-gray-900 relative group flex items-center justify-center overflow-hidden">
                 

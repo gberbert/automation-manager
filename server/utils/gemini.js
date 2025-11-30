@@ -5,11 +5,20 @@ const admin = require('firebase-admin'); // Necessário para marcar o tópico no
 function forceCleanText(text) {
     if (!text) return "";
     let clean = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    
+    // Limpeza de JSON wrappers
     if (clean.startsWith('{')) clean = clean.substring(1);
     if (clean.endsWith('}')) clean = clean.substring(0, clean.length - 1);
     clean = clean.replace(/"content"\s*:\s*"/i, '').replace(/"content"\s*:\s*`/i, '');
+    
+    // Remove a parte do imagePrompt se vier colada
     const imagePromptIndex = clean.search(/",\s*"imagePrompt"/i);
     if (imagePromptIndex !== -1) clean = clean.substring(0, imagePromptIndex);
+    
+    // --- CORREÇÃO DO PLACEHOLDER ---
+    // Remove trechos como [Link para o PDF...], [Inserir link], etc.
+    clean = clean.replace(/\[Link.*?\]/gi, '').replace(/\[Inserir.*?\]/gi, '');
+
     return clean.replace(/"\s*$/, '').replace(/`\s*$/, '').replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/\\"/g, '"').trim();
 }
 
@@ -141,11 +150,19 @@ async function generatePost(settings, logFn = null) {
             pdfDownloadLink = pdfResult.imageUrl;
             pdfModelUsed = pdfResult.modelUsed;
             
+            // --- CORREÇÃO NO PROMPT DE CONTEXTO ---
             extraContext = `
             ### DOCUMENTO DE REFERÊNCIA (${pdfDateFilter}+) ###
             Título: "${pdfResult.metaTitle}"
             Fonte: ${pdfModelUsed}
-            INSTRUÇÃO: Analise o documento anexo e escreva um post técnico sobre ele. Cite o título.`;
+            
+            INSTRUÇÃO CRÍTICA:
+            1. Analise o documento anexo.
+            2. Escreva um post técnico sobre ele.
+            3. Cite o título do estudo.
+            4. PROIBIDO: NUNCA escreva "[Link]", "[Link para o PDF]" ou qualquer placeholder.
+            5. Apenas termine o texto convidando o leitor a acessar o material completo anexo. O sistema inserirá o link automaticamente.
+            `;
 
         } catch (e) {
             // --- REGRA DE ABORTO DE POST ---
@@ -182,7 +199,7 @@ async function generatePost(settings, logFn = null) {
     CONTEXTO: "${randomContext}"
     IDIOMA: ${settings.language === 'pt-BR' ? "Portuguese (Brazil)" : "English"}
     OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "..." }
-    RULES: No markdown blocks.
+    RULES: No markdown blocks. NO PLACEHOLDERS LIKE [Link].
     `;
     
     let postContent = { content: "", imagePrompt: "" };
@@ -215,17 +232,15 @@ async function generatePost(settings, logFn = null) {
     } catch (e) { console.error("Erro imagem final:", e); }
 
     // --- CORREÇÃO DA TAG MEDIA TYPE ---
-    // Se for modo PDF e tivermos um link válido, marcamos como 'pdf'.
-    // Caso contrário (modo imagem ou falha no pdf que virou imagem), marcamos como 'image'.
     const finalMediaType = (isPdfMode && pdfDownloadLink) ? 'pdf' : 'image';
 
     return {
         topic: randomTopic,
         content: postContent.content,
         imagePrompt: postContent.imagePrompt,
-        imageUrl: finalMediaData.imageUrl, // URL da Capa (Imagem gerada)
+        imageUrl: finalMediaData.imageUrl, 
         modelUsed: isPdfMode ? `${pdfModelUsed} + ${finalMediaData.modelUsed}` : finalMediaData.modelUsed,
-        mediaType: finalMediaType, // <--- CORREÇÃO AQUI
+        mediaType: finalMediaType,
         originalPdfUrl: pdfDownloadLink, 
         manualRequired: false,
         metaIndexes: {
