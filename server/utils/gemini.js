@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { generateMedia } = require('./mediaHandler');
+const admin = require('firebase-admin'); // Necessário para marcar o tópico no banco
 
 function forceCleanText(text) {
     if (!text) return "";
@@ -21,8 +22,57 @@ function robustParse(text) {
     } catch (e) {
         const contentMatch = text.match(/"content"\s*:\s*"([\s\S]*?)(?=",)/);
         const imageMatch = text.match(/"imagePrompt"\s*:\s*"([\s\S]*?)(?="|\})/);
- 
         return { content: contentMatch ? contentMatch[1] : text, imagePrompt: imageMatch ? imageMatch[1] : "" };
+    }
+}
+
+// --- FUNÇÃO PARA MARCAR TÓPICO COM ERRO NO BANCO ---
+async function markTopicAsFailed(topic) {
+    try {
+        const db = admin.firestore();
+        const ref = db.collection('settings').doc('global');
+        
+        await db.runTransaction(async (t) => {
+            const doc = await t.get(ref);
+            if (!doc.exists) return;
+            const data = doc.data();
+
+            // Helper para adicionar o alerta se não tiver
+            const markList = (list) => {
+                if (!Array.isArray(list)) return list;
+                return list.map(item => {
+                    if (item === topic && !item.startsWith("⚠️")) {
+                        return `⚠️ ${item}`;
+                    }
+                    return item;
+                });
+            };
+
+            // Atualiza em todos os lugares possíveis
+            let updates = {};
+            
+            // Estratégia PDF
+            if (data.strategyPdf?.topics?.includes(topic)) {
+                updates['strategyPdf.topics'] = markList(data.strategyPdf.topics);
+            }
+            
+            // Estratégia Imagem
+            if (data.strategyImage?.topics?.includes(topic)) {
+                updates['strategyImage.topics'] = markList(data.strategyImage.topics);
+            }
+
+            // Fallback (lista raiz antiga)
+            if (data.topics?.includes(topic)) {
+                updates['topics'] = markList(data.topics);
+            }
+
+            if (Object.keys(updates).length > 0) {
+                t.update(ref, updates);
+                console.log(`[DB] ⚠️ Tópico marcado com alerta no Firestore: "${topic}"`);
+            }
+        });
+    } catch (e) {
+        console.error("Erro ao marcar tópico no banco:", e.message);
     }
 }
 
@@ -34,81 +84,97 @@ async function generatePost(settings, logFn = null) {
 
     const postFormat = settings.postFormat || 'image';
     const isPdfMode = postFormat === 'pdf'; 
-    
     settings.activeFormat = postFormat; 
-    settings.activePdfStrategy = settings.strategyPdf?.source || 'arxiv';
-
-    let targetStrategy = isPdfMode ? settings.strategyPdf : settings.strategyImage;
-    if (!targetStrategy) targetStrategy = settings;
-
-    const pool = targetStrategy.topics || settings.topics || [];
-    if (!pool || pool.length === 0) throw new Error(`Pool de Tópicos vazio.`);
     
-    const topicIndex = Math.floor(Math.random() * pool.length);
-    const randomTopic = pool[topicIndex];
+    // --- 1. SELEÇÃO DO TÓPICO ---
+    const targetStrategy = isPdfMode ? settings.strategyPdf : settings.strategyImage;
+    const pool = targetStrategy?.topics || settings.topics || [];
     
-    const contextPool = targetStrategy.contexts || settings.contexts || [];
+    // Filtra tópicos que já estão com erro para não insistir neles
+    const validPool = pool.filter(t => !t.startsWith("⚠️"));
+
+    if (!validPool || validPool.length === 0) {
+        // Se só sobraram tópicos com erro, tenta usar todos, mas avisa
+        if (pool.length > 0) {
+            console.warn("⚠️ Pool só contém tópicos marcados com erro. Tentando um deles...");
+        } else {
+            throw new Error(`Pool de Tópicos vazio.`);
+        }
+    }
+    
+    const usePool = validPool.length > 0 ? validPool : pool;
+    const topicIndex = Math.floor(Math.random() * usePool.length);
+    const randomTopic = usePool[topicIndex];
+    
+    console.log(`🎲 Tópico selecionado: "${randomTopic}"`);
+
+    // --- 2. SELEÇÃO DO CONTEXTO ---
+    const contextPool = targetStrategy?.contexts || settings.contexts || [];
     let randomContext = "";
     let contextIndex = -1;
     if (contextPool.length > 0) {
         contextIndex = Math.floor(Math.random() * contextPool.length);
-        randomContext = contextPool[contextIndex];
+        const ctxItem = contextPool[contextIndex];
+        randomContext = typeof ctxItem === 'object' ? ctxItem.text : ctxItem;
     }
 
-    console.log(`🎲 Tópico #${topicIndex + 1}: "${randomTopic}"`);
-    // Filtro de ano configurado no Frontend
+    // --- 3. BUSCA DE MÍDIA (PDF ou IMAGEM) ---
     const pdfDateFilter = settings.strategyPdf?.dateFilter || '2024';
-
     let pdfContentBase64 = null;
     let pdfDownloadLink = "";
     let extraContext = "";
     let pdfModelUsed = "";
+
     if (isPdfMode) {
         try {
-            console.log("🧠 Simplificando tópico...");
+            console.log("🧠 Simplificando tópico para busca...");
             const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
             const m = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            const t = await m.generateContent(`
-                Role: Search Query Optimizer.
-                Task: Convert topic to SINGLE short string of keywords.
-                Topic: "${randomTopic}"
-                Constraints: Output ONLY the keywords.
-            `);
+            const t = await m.generateContent(`Task: Convert topic to SINGLE short string of keywords for academic search. Topic: "${randomTopic}". Output ONLY keywords.`);
             const simplifiedQuery = t.response.text().trim();
-            console.log(`🔍 Query: "${simplifiedQuery}"`);
             
-            // Passa o ano configurado para a busca
+            // CHAMA O MEDIA HANDLER (Pode lançar erro PDF_NOT_FOUND)
             const pdfResult = await generateMedia(simplifiedQuery, { ...settings, activeFormat: 'pdf', pdfDateFilter }, logFn);
-            if (pdfResult.metaTitle) {
-                pdfContentBase64 = pdfResult.pdfBase64;
-                pdfDownloadLink = pdfResult.imageUrl; 
-                pdfModelUsed = pdfResult.modelUsed;
+            
+            // Se chegou aqui, temos PDF válido
+            pdfContentBase64 = pdfResult.pdfBase64;
+            pdfDownloadLink = pdfResult.imageUrl;
+            pdfModelUsed = pdfResult.modelUsed;
+            
+            extraContext = `
+            ### DOCUMENTO DE REFERÊNCIA (${pdfDateFilter}+) ###
+            Título: "${pdfResult.metaTitle}"
+            Fonte: ${pdfModelUsed}
+            INSTRUÇÃO: Analise o documento anexo e escreva um post técnico sobre ele. Cite o título.`;
 
-                // CORREÇÃO DE DUPLICIDADE DE LINKS:
-                // Removemos a instrução para a IA colocar o link.
-                // Dizemos apenas para citar o documento.
-                extraContext = `
-                ### DOCUMENTO DE REFERÊNCIA (${pdfDateFilter}+) ###
-                Título: "${pdfResult.metaTitle}"
-                Fonte: ${pdfModelUsed}
-                
-                INSTRUÇÃO CRÍTICA:
-                1. Analise o documento anexo.
-                2. Escreva um post técnico sobre ele.
-                3. Cite o título do estudo.
-                4. NÃO COLOQUE O LINK DE DOWNLOAD NO SEU TEXTO. O sistema fará isso automaticamente no final.
-                `;
-            }
         } catch (e) {
-            console.warn(`⚠️ Falha busca PDF: ${e.message}`);
-            if (logFn) await logFn('warn', `Falha busca PDF`, e.message);
+            // --- REGRA DE ABORTO DE POST ---
+            if (e.message === "PDF_NOT_FOUND") {
+                console.warn(`⛔ Tópico cancelado: "${randomTopic}" - Sem PDF.`);
+                
+                // 1. Marca no Banco de Dados
+                await markTopicAsFailed(randomTopic);
+
+                // 2. Loga no Sistema
+                if (logFn) {
+                    await logFn('warn', `⚠️ Tópico Marcado: ${randomTopic}`, `Nenhum PDF de ${pdfDateFilter}+ encontrado. O tópico foi marcado com ⚠️ para revisão.`);
+                }
+                
+                return null; // Retorna NULL para não criar o post no banco
+            }
+            
+            console.error("Erro desconhecido no fluxo PDF:", e);
+            if(logFn) await logFn('error', `Erro Fluxo PDF`, e.message);
+            return null;
         }
     }
 
-    // GERAÇÃO DE TEXTO
+    // --- 4. GERAÇÃO DE TEXTO DO POST ---
+    
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     const textModel = genAI.getGenerativeModel({ model: settings.geminiModel || "gemini-2.5-flash" });
-    const templateBase = targetStrategy.template || settings.promptTemplate || "Crie um post profissional.";
+    const templateBase = targetStrategy?.template || "Crie um post profissional.";
+    
     const finalPrompt = `
     ${templateBase}
     TÓPICO: "${randomTopic}"
@@ -125,44 +191,28 @@ async function generatePost(settings, logFn = null) {
         if (pdfContentBase64) parts.push({ inlineData: { data: pdfContentBase64, mimeType: "application/pdf" } });
         
         const result = await textModel.generateContent(parts);
-        const raw = result.response.text();
-        const parsed = robustParse(raw);
-        postContent.content = forceCleanText(parsed.content || raw);
+        const parsed = robustParse(result.response.text());
+        postContent.content = forceCleanText(parsed.content);
         
-        // INJEÇÃO DO LINK ÚNICO E CORRETO
-        // Somente aqui o link é adicionado.
         if (pdfDownloadLink && !postContent.content.includes(pdfDownloadLink)) {
             postContent.content += `\n\n📄 Leia o estudo completo aqui: ${pdfDownloadLink}`;
         }
-
         postContent.imagePrompt = parsed.imagePrompt || `Professional photo about ${randomTopic}`;
     } catch (e) {
-        // Retry sem anexo se estourar limite
-        if (e.message.includes("413")) {
-            const r = await textModel.generateContent(finalPrompt);
-            const p = robustParse(r.response.text());
-            postContent.content = forceCleanText(p.content || r.response.text());
-            if (pdfDownloadLink) postContent.content += `\n\n📄 Link: ${pdfDownloadLink}`;
-        } else {
-            if(logFn) await logFn('error', 'Erro Texto Gemini', e.message);
-            throw e;
-        }
+        if(logFn) await logFn('error', 'Erro Texto Gemini', e.message);
+        return null;
     }
 
-    // GERAÇÃO DE IMAGEM (GARANTIA DE FALLBACK)
+    // --- 5. GERAÇÃO DE IMAGEM (CAPA OU POST IMAGEM) ---
     let finalMediaData = { imageUrl: '', modelUsed: 'None' };
     try {
-        // Força o formato 'image' para garantir que o mediaHandler use o fluxo de imagem
-        // Mantém as chaves do settings (imageProvider, geminiApiKey) para o fallback funcionar
         const imageSettings = { 
             ...settings, 
             activeFormat: 'image',
-            forceImageGeneration: true // Flag extra de segurança
+            forceImageGeneration: true 
         };
-        
         finalMediaData = await generateMedia(postContent.imagePrompt, imageSettings, logFn);
-        finalMediaData.mediaType = 'image';
-    } catch (e) { console.error("Erro imagem:", e); }
+    } catch (e) { console.error("Erro imagem final:", e); }
 
     return {
         topic: randomTopic,
@@ -170,7 +220,7 @@ async function generatePost(settings, logFn = null) {
         imagePrompt: postContent.imagePrompt,
         imageUrl: finalMediaData.imageUrl,
         modelUsed: isPdfMode ? `${pdfModelUsed} + ${finalMediaData.modelUsed}` : finalMediaData.modelUsed,
-        mediaType: 'image', 
+        mediaType: 'image',
         originalPdfUrl: pdfDownloadLink, 
         manualRequired: false,
         metaIndexes: {
