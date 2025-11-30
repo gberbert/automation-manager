@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { CheckCircle, Calendar, ChevronDown, ChevronUp, Undo2, Trash2 } from 'lucide-react';
+import { CheckCircle, Calendar, ChevronDown, ChevronUp, Undo2, Trash2, FileText, Image as ImageIcon } from 'lucide-react';
 
 export default function Published() {
     const [posts, setPosts] = useState([]);
@@ -25,7 +25,6 @@ export default function Published() {
         }
         setLoading(false);
     }, []);
-
     useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
     const handleRevertToApproved = async (postId) => {
@@ -37,25 +36,24 @@ export default function Published() {
                 });
                 fetchPosts();
                 setExpandedPost(null);
-            } catch (e) { alert("Erro ao reverter: " + e.message); }
+            } catch (e) { alert("Erro ao reverter: " + e.message);
+            }
         }
     };
-
     const handleDelete = async (postId) => {
         if (confirm('ATENÇÃO: Isso apagará o post do sistema, mas NÃO apagará do LinkedIn. Deseja continuar?')) {
             try {
                 await deleteDoc(doc(db, 'posts', postId));
                 fetchPosts();
                 setExpandedPost(null);
-            } catch (e) { alert("Erro ao excluir: " + e.message); }
+            } catch (e) { alert("Erro ao excluir: " + e.message);
+            }
         }
     };
-
     const truncateText = (text, maxLength = 120) => {
         if (!text) return '';
         return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
     };
-
     const toggleExpand = (postId) => {
         setExpandedPost(expandedPost === postId ? null : postId);
     };
@@ -84,6 +82,13 @@ export default function Published() {
                                                 <div className="px-3 py-1 rounded-full text-xs font-medium border bg-blue-500/20 text-blue-400 border-blue-500/30">
                                                     PUBLISHED
                                                 </div>
+                                                
+                                                {/* BADGE DE TIPO DE MÍDIA */}
+                                                <div className="px-2 py-1 rounded text-xs font-medium bg-gray-700/50 text-gray-300 border border-gray-600 flex items-center gap-1">
+                                                    {post.mediaType === 'pdf' ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                                                    {post.mediaType === 'pdf' ? 'PDF+Text' : 'Img+Text'}
+                                                </div>
+
                                             </div>
                                             <div className="flex items-center text-gray-500 text-xs space-x-1 mb-3">
                                                 <Calendar className="w-3 h-3" />
@@ -109,6 +114,21 @@ export default function Published() {
                                                     </div>
                                                 )}
                                                 <img src={post.imageUrl} alt={post.topic} className="w-full h-full object-cover" />
+                                                
+                                                {/* BOTÃO PDF (SE TIVER) */}
+                                                {post.mediaType === 'pdf' && post.originalPdfUrl && (
+                                                    <div className="absolute bottom-3 left-3 z-30">
+                                                        <a 
+                                                            href={post.originalPdfUrl} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer" 
+                                                            className="flex items-center gap-2 bg-red-600/90 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow-lg backdrop-blur-sm transition-all border border-red-500/50"
+                                                        >
+                                                            <FileText className="w-4 h-4" />
+                                                            <span>LER PDF</span>
+                                                        </a>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 

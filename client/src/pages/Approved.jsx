@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Clock, Calendar, ChevronDown, ChevronUp, Send, Loader2, Edit2, Trash2, Save, ImageOff, X, AlertCircle, FileText, Download, ExternalLink, AlertTriangle, Camera, RefreshCw, Upload, Check, Search } from 'lucide-react';
+import { Clock, Calendar, ChevronDown, ChevronUp, Send, Loader2, Edit2, Trash2, Save, ImageOff, X, AlertCircle, FileText, Download, ExternalLink, AlertTriangle, Camera, RefreshCw, Upload, Check, Search, Image as ImageIcon, Wand2 } from 'lucide-react';
 
 export default function Approved() {
     const [posts, setPosts] = useState([]);
@@ -14,7 +14,6 @@ export default function Approved() {
     const [editingPost, setEditingPost] = useState(null);
     const [editedContent, setEditedContent] = useState('');
     const [editedImageUrl, setEditedImageUrl] = useState('');
-    
     // Processamento
     const [regeneratingImage, setRegeneratingImage] = useState(null);
     const [uploadingImage, setUploadingImage] = useState(null);
@@ -29,7 +28,6 @@ export default function Approved() {
     const [targetPostId, setTargetPostId] = useState(null);
 
     const fileInputRef = useRef(null);
-
     // --- HELPER DE URL INTELIGENTE ---
     const getApiUrl = (endpoint) => {
         const host = window.location.hostname;
@@ -38,7 +36,6 @@ export default function Approved() {
         }
         return `/api/${endpoint}`;
     };
-
     // --- FETCH ---
     const fetchPosts = useCallback(async () => {
         setLoading(true);
@@ -52,10 +49,8 @@ export default function Approved() {
         } catch (e) { setErrorMsg("Erro ao carregar posts."); }
         setLoading(false);
     }, []);
-
     useEffect(() => { fetchPosts(); }, [fetchPosts]);
     useEffect(() => { if(errorMsg) setTimeout(() => setErrorMsg(null), 8000); }, [errorMsg]);
-
     // --- PUBLICAÇÃO (DEBUG ATIVADO) ---
     const handlePublishNow = async (post) => {
         if (publishingId) return;
@@ -80,7 +75,6 @@ export default function Approved() {
                     });
                     
                     const uploadData = await uploadRes.json();
-                    
                     if (uploadRes.ok && uploadData.success && uploadData.assetUrn) {
                         assetUrn = uploadData.assetUrn;
                     } else {
@@ -117,7 +111,6 @@ export default function Approved() {
             clearTimeout(timeoutId);
 
             const pubData = await pubRes.json();
-            
             if (!pubRes.ok) {
                 throw new Error(`Erro LinkedIn: ${pubData.error || 'Falha na publicação'}`);
             }
@@ -125,7 +118,6 @@ export default function Approved() {
             alert('✅ Published Successfully!');
             fetchPosts();
             setExpandedPost(null);
-
         } catch (error) {
             if (error.name === 'AbortError') alert("⚠️ Timeout: O LinkedIn demorou para responder.");
             else {
@@ -144,8 +136,10 @@ export default function Approved() {
         try {
             const res = await fetch(getApiUrl('regenerate-image'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ postId: post.id, prompt: post.imagePrompt }) });
             const data = await res.json();
-            if (data.success) { setPosts(prev => prev.map(p => p.id === post.id ? { ...p, imageUrl: data.imageUrl, modelUsed: data.modelUsed } : p)); setImageLoadErrors(p => ({...p, [post.id]: false})); } else setErrorMsg(data.error);
-        } catch (e) { setErrorMsg("Falha regeneração."); } finally { setRegeneratingImage(null); }
+            if (data.success) { setPosts(prev => prev.map(p => p.id === post.id ? { ...p, imageUrl: data.imageUrl, modelUsed: data.modelUsed } : p));
+            setImageLoadErrors(p => ({...p, [post.id]: false})); } else setErrorMsg(data.error);
+        } catch (e) { setErrorMsg("Falha regeneração."); } finally { setRegeneratingImage(null);
+        }
     };
 
     const handleFileChange = async (e) => {
@@ -159,13 +153,14 @@ export default function Approved() {
             try {
                 const res = await fetch(getApiUrl('manual-upload'), { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ imageBase64: reader.result, postId: pid }) });
                 const d = await res.json();
-                if(d.success) { setPosts(prev => prev.map(p => p.id === pid ? { ...p, imageUrl: d.imageUrl, modelUsed: 'Manual', manualRequired: false } : p)); setImageLoadErrors(p => ({...p, [pid]: false})); } else setErrorMsg(d.error);
-            } catch(err) { setErrorMsg(err.message); }
+                if(d.success) { setPosts(prev => prev.map(p => p.id === pid ? { ...p, imageUrl: d.imageUrl, modelUsed: 'Manual', manualRequired: false } : p));
+                setImageLoadErrors(p => ({...p, [pid]: false})); } else setErrorMsg(d.error);
+            } catch(err) { setErrorMsg(err.message);
+            }
             setUploadingImage(null);
         };
         reader.readAsDataURL(file);
     };
-
     const handleUnsplashSearch = async (term) => {
         if (!term) return; setUnsplashLoading(true);
         try {
@@ -174,46 +169,22 @@ export default function Approved() {
             if (data.success) setUnsplashResults(data.results); else setErrorMsg(data.error);
         } catch (e) { setErrorMsg("Erro Unsplash."); } setUnsplashLoading(false);
     };
-
     const selectUnsplashImage = async (img) => {
         if (!targetPostId) return;
         setPosts(prev => prev.map(p => p.id === targetPostId ? { ...p, imageUrl: img.full, modelUsed: `Unsplash` } : p));
         setUnsplashModalOpen(false);
     };
-
     const handleApprove = async (id) => { await updateDoc(doc(db,'posts',id),{status:'approved'}); fetchPosts(); setExpandedPost(null); };
     const handleReject = async (id) => { if(confirm('Delete permanently?')) { await deleteDoc(doc(db,'posts',id)); fetchPosts(); }};
     const handleEdit = (p) => { setEditingPost(p.id); setEditedContent(typeof p.content==='string'?p.content:JSON.stringify(p.content)); setEditedImageUrl(p.imageUrl||''); };
-    const handleSaveEdit = async (pid) => { await updateDoc(doc(db,'posts',pid),{content:editedContent,imageUrl:editedImageUrl}); setImageLoadErrors(p=>({...p,[pid]:false})); fetchPosts(); setEditingPost(null); };
+    const handleSaveEdit = async (pid) => { await updateDoc(doc(db,'posts',pid),{content:editedContent,imageUrl:editedImageUrl});
+    setImageLoadErrors(p=>({...p,[pid]:false})); fetchPosts(); setEditingPost(null); };
     const handleUploadClick = (pid) => { if(fileInputRef.current) { fileInputRef.current.value=''; fileInputRef.current.dataset.postId=pid; fileInputRef.current.click(); }};
     const openUnsplashModal = (p) => { setTargetPostId(p.id); setUnsplashQuery(p.topic); setUnsplashResults([]); setUnsplashModalOpen(true); handleUnsplashSearch(p.topic); };
     const toggleExpand = (pid) => { setExpandedPost(expandedPost === pid ? null : pid); if(expandedPost!==pid) setEditingPost(null); };
-
-    // RENDERER COM TAGS
+    
+    // RENDERER COM TAGS (NOVO)
     const renderMedia = (post, url, err) => {
-        const isPdf = post.mediaType === 'pdf';
-        const needsManual = post.manualRequired && !url;
-
-        if (isPdf) {
-            return (
-                <div className="h-64 bg-gray-900 flex flex-col items-center justify-center p-6 border-b border-gray-700">
-                    <FileText className="w-16 h-16 text-red-500 mb-4" />
-                    <div className="flex flex-col gap-3 text-center w-full max-w-xs z-10">
-                        {needsManual ? (
-                            <>
-                                <p className="text-yellow-400 text-sm font-bold flex justify-center gap-2"><AlertTriangle className="w-4 h-4"/> Falha Download Auto</p>
-                                {post.originalPdfUrl && <a href={post.originalPdfUrl} target="_blank" className="bg-yellow-600 text-white px-4 py-2 rounded text-sm font-bold flex justify-center gap-2"><Download className="w-3 h-3"/> 1. Baixar Original</a>}
-                                <button onClick={() => handleUploadClick(post.id)} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold flex justify-center gap-2"><Upload className="w-3 h-3"/> 2. Upload PDF</button>
-                            </>
-                        ) : (
-                            url ? <a href={url} target="_blank" className="bg-red-600 text-white px-4 py-2 rounded font-medium flex justify-center gap-2"><Download className="w-4 h-4"/> Ver PDF</a> : <span className="text-gray-500 text-sm">Indisponível</span>
-                        )}
-                        {post.originalPdfUrl && !needsManual && <a href={post.originalPdfUrl} target="_blank" className="text-gray-400 text-xs flex justify-center gap-1 hover:text-white"><ExternalLink className="w-3 h-3"/> Fonte Original</a>}
-                    </div>
-                    {!needsManual && !editingPost && <div className="absolute top-3 right-3"><button onClick={(e)=>{e.stopPropagation();handleUploadClick(post.id)}} className="bg-blue-600/90 p-2 rounded-full shadow text-white"><Upload className="w-4 h-4"/></button></div>}
-                </div>
-            );
-        }
         return (
             <div className="h-64 bg-gray-900 relative group flex items-center justify-center overflow-hidden">
                 {/* TAGS */}
@@ -223,14 +194,42 @@ export default function Approved() {
                         <span className="bg-black/70 backdrop-blur text-blue-400 text-[10px] font-mono px-2 py-1 rounded border border-blue-500/30 shadow-lg font-bold">TOP #{post.metaIndexes.topic}</span>
                     </div>
                 )}
-                {url && !err ? <img src={url} className="w-full h-full object-cover" onError={() => setImageLoadErrors(p=>({...p,[post.id]:true}))} /> : <div className="flex flex-col items-center gap-2 text-gray-500"><ImageOff className="w-8 h-8"/><span>No Image</span></div>}
-                {!editingPost && (
-                    <div className="absolute top-3 right-3 flex gap-2 z-10">
-                        <button onClick={(e)=>{e.stopPropagation();openUnsplashModal(post)}} className="bg-white/90 p-2 rounded-full"><Camera className="w-4 h-4 text-black"/></button>
-                        <button onClick={(e)=>{e.stopPropagation();handleRegenerateImage(post)}} disabled={regeneratingImage === post.id} className="bg-purple-600/90 p-2 rounded-full text-white"><RefreshCw className={`w-4 h-4 ${regeneratingImage === post.id ? 'animate-spin' : ''}`}/></button>
-                        <button onClick={(e)=>{e.stopPropagation();handleUploadClick(post.id)}} disabled={uploadingImage===post.id} className="bg-blue-600/90 p-2 rounded-full text-white">{uploadingImage===post.id?<RefreshCw className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}</button>
+                
+                {/* IMAGEM DE FUNDO (CAPA) */}
+                {url && !err ? (
+                    <img src={url} className="w-full h-full object-cover transition-opacity group-hover:opacity-90" onError={() => setImageLoadErrors(p=>({...p,[post.id]:true}))} />
+                ) : (
+                    <div className="flex flex-col items-center gap-2 text-gray-500"><ImageOff className="w-8 h-8"/><span>No Image</span></div>
+                )}
+
+                {/* BOTÃO DISCRETO PDF */}
+                {post.mediaType === 'pdf' && post.originalPdfUrl && (
+                    <div className="absolute bottom-3 left-3 z-30">
+                        <a 
+                            href={post.originalPdfUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="flex items-center gap-2 bg-red-600/90 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow-lg backdrop-blur-sm transition-all border border-red-500/50"
+                            title="Ler PDF Original"
+                        >
+                            <FileText className="w-4 h-4" />
+                            <span>LER PDF</span>
+                        </a>
                     </div>
                 )}
+
+                {!editingPost && (
+                    <div className="absolute top-3 right-3 flex gap-2 z-10">
+                        <button onClick={(e)=>{e.stopPropagation();openUnsplashModal(post)}} className="bg-white/90 p-2 rounded-full shadow hover:bg-white"><Camera className="w-4 h-4 text-black"/></button>
+                        <button onClick={(e)=>{e.stopPropagation();handleRegenerateImage(post)}} disabled={regeneratingImage === post.id} className="bg-purple-600/90 p-2 rounded-full text-white shadow hover:bg-purple-500"><RefreshCw className={`w-4 h-4 ${regeneratingImage === post.id ? 'animate-spin' : ''}`}/></button>
+                        <button onClick={(e)=>{e.stopPropagation();handleUploadClick(post.id)}} disabled={uploadingImage===post.id} className="bg-blue-600/90 p-2 rounded-full text-white shadow hover:bg-blue-500">{uploadingImage===post.id?<RefreshCw className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}</button>
+                    </div>
+                )}
+
+                {/* Badge do Modelo */}
+                <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-xs text-white font-medium flex items-center gap-1">
+                    <Wand2 className="w-3 h-3 text-purple-400" /> {post.modelUsed?.split('+').pop().trim() || "AI Image"}
+                </div>
             </div>
         );
     };
@@ -272,6 +271,13 @@ export default function Approved() {
                                             <div className="flex items-center gap-3 mb-2 flex-wrap">
                                                 <h3 className="text-lg font-semibold text-white truncate">{post.topic}</h3>
                                                 <div className="px-3 py-1 rounded-full text-xs font-medium border bg-green-500/20 text-green-400 border-green-500/30">APPROVED</div>
+                                                
+                                                {/* BADGE DE TIPO DE MÍDIA */}
+                                                <div className="px-2 py-1 rounded text-xs font-medium bg-gray-700/50 text-gray-300 border border-gray-600 flex items-center gap-1">
+                                                    {post.mediaType === 'pdf' ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                                                    {post.mediaType === 'pdf' ? 'PDF+Text' : 'Img+Text'}
+                                                </div>
+
                                             </div>
                                             <div className="flex items-center text-gray-500 text-xs space-x-1 mb-3">
                                                 <Calendar className="w-3 h-3" />
@@ -296,9 +302,9 @@ export default function Approved() {
                                             <div className="flex gap-3 pt-4 border-t border-gray-700">
                                                 {!editingPost && !publishingId && (
                                                     <>
-                                                    <button onClick={(e)=>{e.stopPropagation();handleEdit(post)}} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded flex justify-center gap-2"><Edit2 className="w-4 h-4"/> Edit</button>
-                                                    {/* REMOVIDO RE-APPROVE DAQUI */}
-                                                    <button onClick={(e)=>{e.stopPropagation();handleReject(post.id)}} className="flex-1 bg-red-600/20 text-red-400 hover:bg-red-600/40 py-2 rounded flex justify-center gap-2"><Trash2 className="w-4 h-4"/> Delete</button>
+                                                        <button onClick={(e)=>{e.stopPropagation();handleEdit(post)}} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded flex justify-center gap-2"><Edit2 className="w-4 h-4"/> Edit</button>
+                                                        {/* REMOVIDO RE-APPROVE DAQUI */}
+                                                        <button onClick={(e)=>{e.stopPropagation();handleReject(post.id)}} className="flex-1 bg-red-600/20 text-red-400 hover:bg-red-600/40 py-2 rounded flex justify-center gap-2"><Trash2 className="w-4 h-4"/> Delete</button>
                                                     </>
                                                 )}
                                                 <button onClick={(e)=>{e.stopPropagation();handlePublishNow(post)}} disabled={publishingId===post.id} className="w-full md:w-auto ml-auto bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white px-6 py-2 rounded flex items-center justify-center gap-2">

@@ -214,13 +214,18 @@ async function generatePost(settings, logFn = null) {
         finalMediaData = await generateMedia(postContent.imagePrompt, imageSettings, logFn);
     } catch (e) { console.error("Erro imagem final:", e); }
 
+    // --- CORREÇÃO DA TAG MEDIA TYPE ---
+    // Se for modo PDF e tivermos um link válido, marcamos como 'pdf'.
+    // Caso contrário (modo imagem ou falha no pdf que virou imagem), marcamos como 'image'.
+    const finalMediaType = (isPdfMode && pdfDownloadLink) ? 'pdf' : 'image';
+
     return {
         topic: randomTopic,
         content: postContent.content,
         imagePrompt: postContent.imagePrompt,
-        imageUrl: finalMediaData.imageUrl,
+        imageUrl: finalMediaData.imageUrl, // URL da Capa (Imagem gerada)
         modelUsed: isPdfMode ? `${pdfModelUsed} + ${finalMediaData.modelUsed}` : finalMediaData.modelUsed,
-        mediaType: 'image',
+        mediaType: finalMediaType, // <--- CORREÇÃO AQUI
         originalPdfUrl: pdfDownloadLink, 
         manualRequired: false,
         metaIndexes: {

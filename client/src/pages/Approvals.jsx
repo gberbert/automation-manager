@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, getDocs, updateDoc, doc, deleteDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Check, X, Clock, Calendar, ChevronDown, ChevronUp, Linkedin, Instagram, Edit2, Save, RefreshCw, Layers, ImageOff, AlertCircle, Wand2, Upload, Camera, Search, Download, ExternalLink, FileText, AlertTriangle, Trash2 } from 'lucide-react';
+import { Check, X, Clock, Calendar, ChevronDown, ChevronUp, Linkedin, Instagram, Edit2, Save, RefreshCw, Layers, ImageOff, AlertCircle, Wand2, Upload, Camera, Search, Download, ExternalLink, FileText, AlertTriangle, Trash2, Image as ImageIcon } from 'lucide-react';
 
 export default function Approvals() {
     const [posts, setPosts] = useState([]);
@@ -14,7 +14,6 @@ export default function Approvals() {
     const [uploadingImage, setUploadingImage] = useState(null);
     const [imageLoadErrors, setImageLoadErrors] = useState({});
     const [errorMsg, setErrorMsg] = useState(null);
-
     // Unsplash states
     const [unsplashModalOpen, setUnsplashModalOpen] = useState(false);
     const [unsplashQuery, setUnsplashQuery] = useState('');
@@ -23,7 +22,6 @@ export default function Approvals() {
     const [targetPostId, setTargetPostId] = useState(null);
 
     const fileInputRef = useRef(null);
-
     const fetchPosts = useCallback(async () => {
         setLoading(true);
         setErrorMsg(null);
@@ -40,18 +38,15 @@ export default function Approvals() {
         }
         setLoading(false);
     }, []);
-
     useEffect(() => {
         fetchPosts();
     }, [fetchPosts]);
-
     useEffect(() => {
         if (errorMsg) {
             const timer = setTimeout(() => setErrorMsg(null), 5000);
             return () => clearTimeout(timer);
         }
     }, [errorMsg]);
-
     // Handlers
     const handleApprove = async (id) => {
         try {
@@ -78,7 +73,6 @@ export default function Approvals() {
             }
         }
     };
-
     const safeContent = (content) => {
         if (!content) return '';
         if (typeof content === 'string') return content;
@@ -120,7 +114,6 @@ export default function Approvals() {
                 if (host === 'localhost' || host === '127.0.0.1') return `http://localhost:3000/api/${ep}`;
                 return `/api/${ep}`;
             };
-            
             const response = await fetch(getApiUrl('regenerate-image'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -143,7 +136,6 @@ export default function Approvals() {
             setRegeneratingImage(null);
         }
     };
-
     const handleUploadClick = (postId) => {
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
@@ -173,20 +165,17 @@ export default function Approvals() {
                     if (host === 'localhost' || host === '127.0.0.1') return `http://localhost:3000/api/${ep}`;
                     return `/api/${ep}`;
                 };
-
                 const response = await fetch(getApiUrl('manual-upload'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ imageBase64: reader.result, postId: postId })
                 });
-                
                 const contentType = response.headers.get("content-type");
                 if (!contentType || !contentType.includes("application/json")) {
                      throw new Error("Erro no servidor (possível limite de tamanho excedido no Backend).");
                 }
 
                 const result = await response.json();
-                
                 if (result.success) {
                     setPosts(prev => prev.map(p => p.id === postId ? { ...p, imageUrl: result.imageUrl, modelUsed: 'Manual Upload', manualRequired: false } : p));
                     setImageLoadErrors(prev => ({ ...prev, [postId]: false }));
@@ -201,7 +190,6 @@ export default function Approvals() {
         };
         reader.readAsDataURL(file);
     };
-
     const openUnsplashModal = (post) => {
         setTargetPostId(post.id);
         setUnsplashQuery(post.topic || "business");
@@ -226,10 +214,10 @@ export default function Approvals() {
             const data = await res.json();
             if (data.success) setUnsplashResults(data.results);
             else setErrorMsg(data.error);
-        } catch (e) { setErrorMsg("Erro na busca Unsplash."); }
+        } catch (e) { setErrorMsg("Erro na busca Unsplash.");
+        }
         setUnsplashLoading(false);
     };
-
     const selectUnsplashImage = async (img) => {
         if (!targetPostId) return;
         setPosts(prev => prev.map(p => p.id === targetPostId ? { ...p, imageUrl: img.full, modelUsed: `Unsplash (${img.credit})` } : p));
@@ -248,12 +236,10 @@ export default function Approvals() {
             });
         } catch (e) { console.error("Erro ao salvar Unsplash:", e); }
     };
-
     const truncateText = (text, maxLength = 120) => {
         const t = safeContent(text);
         return t.length > maxLength ? t.substring(0, maxLength) + '...' : t;
     };
-
     const toggleExpand = (postId) => {
         setExpandedPost(expandedPost === postId ? null : postId);
         if (expandedPost !== postId) setEditingPost(null);
@@ -269,67 +255,10 @@ export default function Approvals() {
     };
 
     const renderMediaArea = (post, isEditing, currentImageUrl, hasImageError) => {
-        const isPdf = post.mediaType === 'pdf'; 
-        const needsManual = post.manualRequired && !currentImageUrl; 
-
-        if (isPdf) {
-            return (
-                <div className="h-64 w-full bg-gray-900 relative flex flex-col items-center justify-center p-6 border-b border-gray-700">
-                    <FileText className="w-16 h-16 text-red-500 mb-4" />
-                    
-                    <div className="flex flex-col gap-3 w-full max-w-xs z-10">
-                        {needsManual ? (
-                            <div className="text-center animate-pulse">
-                                <p className="text-yellow-400 text-sm mb-2 font-bold flex items-center justify-center gap-2">
-                                    <AlertTriangle className="w-4 h-4"/> Download Automático Falhou
-                                </p>
-                                <div className="flex gap-2 justify-center">
-                                    {post.originalPdfUrl && (
-                                        <a href={post.originalPdfUrl} target="_blank" rel="noopener noreferrer" className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded flex items-center gap-2 text-xs font-bold w-full justify-center">
-                                            <Download className="w-3 h-3" /> Baixar Original
-                                        </a>
-                                    )}
-                                </div>
-                                <button onClick={() => handleUploadClick(post.id)} className="mt-2 w-full bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded flex items-center justify-center gap-2 text-xs font-bold">
-                                    <Upload className="w-3 h-3" /> Fazer Upload do PDF
-                                </button>
-                            </div>
-                        ) : (
-                            currentImageUrl ? (
-                                <a href={currentImageUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-medium transition-colors">
-                                    <Download className="w-4 h-4" /> Ver PDF Gerado
-                                </a>
-                            ) : (
-                                <div className="text-center text-gray-500">Sem PDF. Use Upload Manual.</div>
-                            )
-                        )}
-
-                        {post.originalPdfUrl && !needsManual && (
-                            <a href={post.originalPdfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 rounded-lg text-sm border border-gray-600 transition-colors">
-                                <ExternalLink className="w-4 h-4" /> Fonte Original ({post.modelUsed?.split(':')[0]})
-                            </a>
-                        )}
-                    </div>
-
-                    {!needsManual && !isEditing && (
-                        <div className="absolute top-3 right-3">
-                            <button onClick={(e) => { e.stopPropagation(); handleUploadClick(post.id); }} disabled={uploadingImage === post.id} className="bg-blue-600/90 hover:bg-blue-600 text-white p-2 rounded-full shadow-lg transition-all" title="Trocar PDF">
-                                {uploadingImage === post.id ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Upload className="w-4 h-4" />}
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-xs text-white font-medium flex items-center gap-1">
-                        <Wand2 className="w-3 h-3 text-purple-400" /> {post.modelUsed || "ArXiv"}
-                    </div>
-                </div>
-            );
-        }
-
         return (
             <div className="h-64 w-full bg-gray-900 relative group flex items-center justify-center overflow-hidden">
                 
-                {/* --- ADIÇÃO: TAGS DE RASTREABILIDADE --- */}
+                {/* --- TAGS DE RASTREABILIDADE --- */}
                 {post.metaIndexes && (
                     <div className="absolute top-2 left-2 flex flex-col gap-1 z-20 pointer-events-none">
                         {post.metaIndexes.context && (
@@ -342,30 +271,48 @@ export default function Approvals() {
                         </span>
                     </div>
                 )}
-                {/* --------------------------------------- */}
 
+                {/* --- IMAGEM DE FUNDO (SEMPRE A CAPA) --- */}
                 {currentImageUrl && !hasImageError ? (
-                    <img src={currentImageUrl} alt={post.topic} className="w-full h-full object-cover" onError={() => handleImageError(post.id)} />
+                    <img src={currentImageUrl} alt={post.topic} className="w-full h-full object-cover transition-opacity group-hover:opacity-90" onError={() => handleImageError(post.id)} />
                 ) : (
                     <div className="flex flex-col items-center gap-2 text-gray-500"><ImageOff className="w-8 h-8"/><span>No Image</span></div>
                 )}
                 
+                {/* --- BOTÃO DE PDF (DISCRETO, SE EXISTIR) --- */}
+                {post.mediaType === 'pdf' && post.originalPdfUrl && (
+                    <div className="absolute bottom-3 left-3 z-30">
+                        <a 
+                            href={post.originalPdfUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="flex items-center gap-2 bg-red-600/90 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow-lg backdrop-blur-sm transition-all border border-red-500/50"
+                            title="Ler PDF Original"
+                        >
+                            <FileText className="w-4 h-4" />
+                            <span>LER PDF</span>
+                        </a>
+                    </div>
+                )}
+
+                {/* --- CONTROLES DE IMAGEM (Upload/Regenerar a CAPA) --- */}
                 {!isEditing && (
                     <div className="absolute top-3 right-3 flex gap-2 z-10">
-                        <button onClick={(e) => { e.stopPropagation(); openUnsplashModal(post); }} className="bg-white/90 hover:bg-white text-black p-2 rounded-full shadow-lg transition-all" title="Buscar no Unsplash">
+                        <button onClick={(e) => { e.stopPropagation(); openUnsplashModal(post); }} className="bg-white/90 hover:bg-white text-black p-2 rounded-full shadow-lg transition-all" title="Trocar Capa (Unsplash)">
                             <Camera className="w-4 h-4" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleRegenerateImage(post); }} disabled={regeneratingImage === post.id} className="bg-purple-600/90 hover:bg-purple-600 text-white p-2 rounded-full shadow-lg transition-all" title="Regenerar (IA)">
+                        <button onClick={(e) => { e.stopPropagation(); handleRegenerateImage(post); }} disabled={regeneratingImage === post.id} className="bg-purple-600/90 hover:bg-purple-600 text-white p-2 rounded-full shadow-lg transition-all" title="Regenerar Capa (IA)">
                             <RefreshCw className={`w-4 h-4 ${regeneratingImage === post.id ? 'animate-spin' : ''}`} />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleUploadClick(post.id); }} disabled={uploadingImage === post.id} className="bg-blue-600/90 hover:bg-blue-600 text-white p-2 rounded-full shadow-lg transition-all" title="Upload Manual">
+                        <button onClick={(e) => { e.stopPropagation(); handleUploadClick(post.id); }} disabled={uploadingImage === post.id} className="bg-blue-600/90 hover:bg-blue-600 text-white p-2 rounded-full shadow-lg transition-all" title="Upload Manual de Capa">
                             {uploadingImage === post.id ? <RefreshCw className="w-4 h-4 animate-spin"/> : <Upload className="w-4 h-4" />}
                         </button>
                     </div>
                 )}
                 
+                {/* Badge do Modelo de Imagem */}
                 <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-xs text-white font-medium flex items-center gap-1">
-                    <Wand2 className="w-3 h-3 text-purple-400" /> {post.modelUsed || "Unknown"}
+                    <Wand2 className="w-3 h-3 text-purple-400" /> {post.modelUsed?.split('+').pop().trim() || "AI Image"}
                 </div>
             </div>
         );
@@ -451,6 +398,12 @@ export default function Approvals() {
                                                 <h3 className="text-lg font-semibold text-white truncate">{post.topic}</h3>
                                                 <div className="px-3 py-1 rounded-full text-xs font-medium border bg-yellow-500/20 text-yellow-400 border-yellow-500/30">PENDING</div>
                                                 
+                                                {/* BADGE DE TIPO DE MÍDIA */}
+                                                <div className="px-2 py-1 rounded text-xs font-medium bg-gray-700/50 text-gray-300 border border-gray-600 flex items-center gap-1">
+                                                    {post.mediaType === 'pdf' ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                                                    {post.mediaType === 'pdf' ? 'PDF+Text' : 'Img+Text'}
+                                                </div>
+
                                                 {post.promptSlot && (
                                                     <div className="px-2 py-1 rounded text-xs font-medium bg-purple-500/10 text-purple-300 border border-purple-500/20 flex items-center gap-1" title="Configuração de Prompt usada">
                                                         <Layers className="w-3 h-3" />Slot {post.promptSlot}
