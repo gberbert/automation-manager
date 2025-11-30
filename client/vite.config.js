@@ -9,7 +9,6 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
-      // ADICIONE ESTE BLOCO WORKBOX AQUI
       workbox: {
         // Isso diz ao PWA para NÃO interceptar rotas que começam com /api ou /auth
         navigateFallbackDenylist: [/^\/api/, /^\/auth/],
@@ -24,6 +23,18 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
+        // --- NOVO: CONFIGURAÇÃO DE SHARE TARGET ---
+        share_target: {
+          action: "/repost",
+          method: "GET",
+          enctype: "application/x-www-form-urlencoded",
+          params: {
+            title: "title",
+            text: "text",
+            url: "url"
+          }
+        },
+        // ------------------------------------------
         icons: [
           {
             src: 'pwa-192x192.png',
@@ -45,4 +56,4 @@ export default defineConfig({
       }
     })
   ],
-})	
+})

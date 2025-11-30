@@ -29,28 +29,27 @@ export default function Approvals() {
         try {
             const q = query(collection(db, 'posts'), where('status', '==', 'pending'));
             const snap = await getDocs(q);
-            const rawData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            // 1. Converte para array
+            let rawData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // --- DEDUPLICAÇÃO VISUAL ---
-            // Se houver posts duplicados no banco (mesmo tópico), mostramos apenas um.
+            // 2. ORDENAÇÃO PRIMEIRO (Mais recente no topo)
+            rawData.sort((a, b) => {
+                const dateA = a.createdAt?.toDate?.() || new Date(0);
+                const dateB = b.createdAt?.toDate?.() || new Date(0);
+                return dateB - dateA; // Decrescente
+            });
+
+            // 3. DEDUPLICAÇÃO VISUAL
             const uniqueMap = new Map();
             rawData.forEach(post => {
-                // Usa o tópico como chave única
                 if (!uniqueMap.has(post.topic)) {
                     uniqueMap.set(post.topic, post);
-                } else {
-                    // Se já existe, verificamos qual é o mais recente (opcional, aqui mantemos o primeiro encontrado)
-                    // console.warn("Duplicata ocultada:", post.topic);
                 }
             });
             
-            // Converte o Map de volta para Array
-            const data = Array.from(uniqueMap.values());
-
-            // Ordena por data (mais recente primeiro)
-            data.sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0));
-            
-            setPosts(data);
+            const finalData = Array.from(uniqueMap.values());
+            setPosts(finalData);
             setImageLoadErrors({});
         } catch (e) {
             console.error("Erro ao buscar posts:", e);
@@ -278,11 +277,9 @@ export default function Approvals() {
     };
 
     const renderMediaArea = (post, isEditing, currentImageUrl, hasImageError) => {
-        // Layout: Imagem de Capa no Fundo + Botão PDF discreto se houver
         return (
             <div className="h-64 w-full bg-gray-900 relative group flex items-center justify-center overflow-hidden">
                 
-                {/* --- TAGS DE RASTREABILIDADE --- */}
                 {post.metaIndexes && (
                     <div className="absolute top-2 left-2 flex flex-col gap-1 z-20 pointer-events-none">
                         {post.metaIndexes.context && (
@@ -296,14 +293,12 @@ export default function Approvals() {
                     </div>
                 )}
 
-                {/* --- IMAGEM DE FUNDO (SEMPRE A CAPA) --- */}
                 {currentImageUrl && !hasImageError ? (
                     <img src={currentImageUrl} alt={post.topic} className="w-full h-full object-cover transition-opacity group-hover:opacity-90" onError={() => handleImageError(post.id)} />
                 ) : (
                     <div className="flex flex-col items-center gap-2 text-gray-500"><ImageOff className="w-8 h-8"/><span>No Image</span></div>
                 )}
                 
-                {/* --- BOTÃO DE PDF (DISCRETO, SE EXISTIR) --- */}
                 {post.mediaType === 'pdf' && post.originalPdfUrl && (
                     <div className="absolute bottom-3 left-3 z-30">
                         <a 
@@ -319,7 +314,6 @@ export default function Approvals() {
                     </div>
                 )}
 
-                {/* --- CONTROLES DE IMAGEM (Upload/Regenerar a CAPA) --- */}
                 {!isEditing && (
                     <div className="absolute top-3 right-3 flex gap-2 z-10">
                         <button onClick={(e) => { e.stopPropagation(); openUnsplashModal(post); }} className="bg-white/90 hover:bg-white text-black p-2 rounded-full shadow-lg transition-all" title="Trocar Capa (Unsplash)">
@@ -334,7 +328,6 @@ export default function Approvals() {
                     </div>
                 )}
                 
-                {/* Badge do Modelo de Imagem */}
                 <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur px-3 py-1 rounded-full text-xs text-white font-medium flex items-center gap-1">
                     <Wand2 className="w-3 h-3 text-purple-400" /> {post.modelUsed?.split('+').pop().trim() || "AI Image"}
                 </div>
@@ -436,7 +429,7 @@ export default function Approvals() {
                                             </div>
                                             <div className="flex items-center text-gray-500 text-xs space-x-1 mb-3">
                                                 <Calendar className="w-3 h-3" />
-                                                <span>{post.createdAt?.toDate ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Just now'}</span>
+                                                <span>{post.createdAt?.toDate ? new Date(post.createdAt.toDate()).toLocaleString() : 'Just now'}</span>
                                             </div>
                                             {!isExpanded && <p className="text-gray-400 text-sm line-clamp-2">{truncateText(safeContent(post.content))}</p>}
                                         </div>
