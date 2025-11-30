@@ -32,7 +32,6 @@ if (serviceAccount) {
     if (admin.apps.length === 0) admin.initializeApp();
 }
 const db = admin.firestore();
-
 // --- LOGGER ---
 async function logSystem(type, msg, det = null, s = {}) {
     console.log(`[${type.toUpperCase()}] ${msg}`);
@@ -47,7 +46,6 @@ async function logSystem(type, msg, det = null, s = {}) {
     } catch (e) { console.error("Log error:", e.message); }
 }
 const logWrapper = (s) => (t, m, d) => logSystem(t, m, d, s);
-
 // ==========================================
 // 🧠 HELPERS DE AGENDAMENTO
 // ==========================================
@@ -67,7 +65,7 @@ function isTimeInWindow(scheduledTime, currentTimeStr) {
 
 // --- TRAVA DIÁRIA ---
 async function checkAndSetLock(type, scheduledTime) {
-    const today = new Date().toISOString().split('T')[0]; 
+    const today = new Date().toISOString().split('T')[0];
     const lockId = `lock_${today}_${type}_${scheduledTime}`;
     const lockRef = db.collection('scheduler_locks').doc(lockId);
     
@@ -78,7 +76,7 @@ async function checkAndSetLock(type, scheduledTime) {
             return false;
         }
         await lockRef.set({ createdAt: admin.firestore.FieldValue.serverTimestamp(), type, scheduledTime });
-        return true; 
+        return true;
     } catch (e) {
         console.error("Erro trava:", e);
         return false;
@@ -99,7 +97,6 @@ async function runScheduler() {
     const brazilTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentHM = brazilTime.getHours().toString().padStart(2, '0') + ':' + 
                       brazilTime.getMinutes().toString().padStart(2, '0');
-    
     console.log(`🕒 Hora Brasil: ${currentHM}`);
 
     // --- 1. CRIAÇÃO ---
@@ -124,7 +121,8 @@ async function runScheduler() {
                                 });
                                 logSystem('success', `Post agendado criado (${format})`, postData.topic);
                             }
-                        } catch (err) { logSystem('error', `Falha Scheduler (${format})`, err.message); }
+                        } catch (err) { logSystem('error', `Falha Scheduler (${format})`, err.message);
+                        }
                     }
                 }
             }
@@ -141,7 +139,6 @@ async function runScheduler() {
         const slot = pub.slots.find(s => s.enabled && isTimeInWindow(s.time, currentHM));
         if (slot) {
             const canPub = await checkAndSetLock('publishing_slot', slot.time);
-            
             if (canPub) {
                 console.log(`🚀 Disparando Publicação (Slot ${slot.id})...`);
                 const q = await db.collection('posts')
@@ -149,7 +146,6 @@ async function runScheduler() {
                     .orderBy('createdAt', 'asc')
                     .limit(slot.count)
                     .get();
-
                 if (q.empty) {
                     console.log("📭 Fila vazia.");
                 } else {
@@ -174,14 +170,14 @@ async function runScheduler() {
                             } catch (uploadErr) {
                                 console.error(`❌ [Scheduler] Falha no upload da imagem: ${uploadErr.message}`);
                                 logSystem('error', `Falha Upload Asset (Scheduler)`, uploadErr.message);
-                                // Se for PDF, aborta para não publicar link quebrado. Se for imagem, tenta publicar assim mesmo (vai virar link).
-                                if (postData.mediaType === 'pdf') continue; 
+                                // Se for PDF, aborta para não publicar link quebrado.
+                                // Se for imagem, tenta publicar assim mesmo (vai virar link).
+                                if (postData.mediaType === 'pdf') continue;
                             }
                         }
 
                         // Agora chamamos o publishPost passando o assetUrn
                         const result = await publishPost(postData, settings, assetUrn);
-                        
                         if (result.success) {
                             await db.collection('posts').doc(doc.id).update({
                                 status: 'published',
@@ -212,6 +208,7 @@ app.post('/api/generate-content', async (req, res) => {
         const settingsDoc = await db.collection('settings').doc('global').get();
         if (!settingsDoc.exists) return res.status(400).json({ error: "Configurações não encontradas." });
         const settings = settingsDoc.data();
+       
         settings.postFormat = format;
         const post = await generatePost(settings, logWrapper({ source: 'manual-trigger' }));
         if (!post) throw new Error("Falha ao gerar post.");
@@ -236,7 +233,6 @@ app.post('/api/manual-upload', async (req, res) => {
         res.json({ success: true, imageUrl });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
-
 app.post('/api/upload-media', async (req, res) => {
     try {
         const { imageUrl, mediaType } = req.body;
@@ -245,7 +241,6 @@ app.post('/api/upload-media', async (req, res) => {
         res.json({ success: true, assetUrn });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/publish-now/:id', async (req, res) => {
     try {
         const postId = req.params.id;
@@ -259,18 +254,32 @@ app.post('/api/publish-now/:id', async (req, res) => {
         } else { res.status(500).json({ error: result.error }); }
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.post('/api/regenerate-image', async (req, res) => {
     try {
+        console.log("[DEBUG] 🔄 Recebida solicitação de regeneração de imagem...");
         const { postId, prompt } = req.body;
+        console.log(`[DEBUG] 🆔 PostID: ${postId}`);
+        
         const settingsDoc = await db.collection('settings').doc('global').get();
-        const settings = { ...settingsDoc.data(), activeFormat: 'image' }; 
+        
+        // --- GARANTIA DE PARIDADE COM O GERADOR PRINCIPAL ---
+        const settings = { 
+            ...settingsDoc.data(), 
+            activeFormat: 'image',
+            forceImageGeneration: true // Força o mediaHandler a usar lógica de imagem
+        }; 
+        
         const media = await generateMedia(prompt, settings, logWrapper({ source: 'regenerate' }));
         await db.collection('posts').doc(postId).update({ imageUrl: media.imageUrl, modelUsed: media.modelUsed });
+        
+        console.log("[DEBUG] ✅ Regeneração concluída com sucesso!");
         res.json({ success: true, imageUrl: media.imageUrl, modelUsed: media.modelUsed });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+  
+    } catch (e) { 
+        console.error("[DEBUG] ❌ Erro na rota de regeneração:", e.message);
+        res.status(500).json({ error: e.message }); 
+    }
 });
-
 app.post('/api/unsplash-search', async (req, res) => {
     try {
         const { query } = req.body;
@@ -279,7 +288,6 @@ app.post('/api/unsplash-search', async (req, res) => {
         res.json({ success: true, results });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.get('/api/cron', async (req, res) => {
     await runScheduler();
     res.json({ status: 'Executed' });
@@ -290,5 +298,4 @@ app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, '../client/dist/in
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server on ${PORT}`));
-
 module.exports = app;
