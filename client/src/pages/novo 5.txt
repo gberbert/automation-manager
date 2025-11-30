@@ -1,0 +1,17 @@
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyACJGg6OZiZ16aEBOTFaUq9kqQmLxV6OU0",
+  authDomain: "doghotel-eca69.firebaseapp.com",
+  projectId: "doghotel-eca69",
+  storageBucket: "doghotel-eca69.firebasestorage.app",
+  messagingSenderId: "845677452140",
+  appId: "1:845677452140:web:eb3d58618809c16dccf149"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
