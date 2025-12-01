@@ -63,15 +63,12 @@ function isTimeInWindow(scheduledTime, currentTimeStr) {
     const schedM = toMinutes(scheduledTime);
     const currM = toMinutes(currentTimeStr);
     
-    // Janela de 20 minutos (Permite que o cron atrase um pouco ou rode em intervalos de 5/10 min)
+    // Janela de 20 minutos
     const diff = currM - schedM;
     
-    // Debug da lógica de tempo
-    // console.log(`[TimeCheck] Agendado: ${schedM}min | Atual: ${currM}min | Diff: ${diff}`);
-
     if (diff >= 0 && diff <= 20) return true;
     
-    // Tratamento para virada do dia (Ex: Agendado 23:55, Atual 00:05)
+    // Tratamento para virada do dia
     const diffDay = (currM + 1440) - schedM;
     if (diffDay >= 0 && diffDay <= 20) return true;
     
@@ -80,7 +77,7 @@ function isTimeInWindow(scheduledTime, currentTimeStr) {
 
 // --- TRAVA DIÁRIA ---
 async function checkAndSetLock(type, scheduledTime) {
-    const today = new Date().toLocaleString("en-CA", { timeZone: "America/Sao_Paulo" }).split(',')[0]; // Formato YYYY-MM-DD
+    const today = new Date().toLocaleString("en-CA", { timeZone: "America/Sao_Paulo" }).split(',')[0]; 
     const lockId = `lock_${today}_${type}_${scheduledTime.replace(':','')}`;
     const lockRef = db.collection('scheduler_locks').doc(lockId);
     
@@ -90,7 +87,6 @@ async function checkAndSetLock(type, scheduledTime) {
             console.log(`🔒 Trava existente: ${lockId} (Já executado hoje)`);
             return false;
         }
-        // Cria a trava
         await lockRef.set({ 
             createdAt: admin.firestore.FieldValue.serverTimestamp(), 
             type, 
@@ -105,7 +101,7 @@ async function checkAndSetLock(type, scheduledTime) {
 }
 
 // ==========================================
-// SCHEDULER (RODA A CADA CHECK DO UPTIMEROBOT)
+// SCHEDULER
 // ==========================================
 async function runScheduler() {
     console.log("⏰ --- INICIANDO VERIFICAÇÃO DO SCHEDULER ---");
@@ -114,7 +110,6 @@ async function runScheduler() {
     if (!settingsDoc.exists) return console.log("❌ Configurações não encontradas.");
     const settings = settingsDoc.data();
 
-    // HORA BRASIL (CRÍTICO)
     const now = new Date();
     const brazilTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentHM = brazilTime.getHours().toString().padStart(2, '0') + ':' + 
@@ -127,6 +122,7 @@ async function runScheduler() {
     const creation = settings.scheduler?.creation;
     if (creation && creation.enabled) {
         
+        // Função auxiliar para processar blocos sequencialmente
         const checkBlock = async (blockSettings, format, sourceName, lockType) => {
             if (!blockSettings.enabled) return;
 
@@ -139,26 +135,31 @@ async function runScheduler() {
                     console.log(`🚀 DISPARANDO CRIAÇÃO: ${sourceName}`);
                     const runSettings = { ...settings, postFormat: format };
                     
-                    // Executa a geração em background para não travar o loop
-                    (async () => {
-                        for(let i=0; i < (blockSettings.count || 1); i++) {
-                            try {
-                                const postData = await generatePost(runSettings, logWrapper({ source: sourceName }));
-                                if (postData) {
-                                    await db.collection('posts').add({
-                                        ...postData,
-                                        status: 'pending',
-                                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                                        platform: 'linkedin',
-                                        generatedBy: 'scheduler'
-                                    });
-                                    logSystem('success', `Automação: Post criado (${format})`, postData.topic);
-                                }
-                            } catch (err) { 
-                                logSystem('error', `Falha Automação (${format})`, err.message);
+                    // --- MUDANÇA CRÍTICA: AGORA USAMOS AWAIT ---
+                    // Isso obriga o servidor a esperar o processo terminar antes de finalizar o request do Cron
+                    for(let i=0; i < (blockSettings.count || 1); i++) {
+                        try {
+                            console.log(`⏳ Iniciando geração item ${i+1}/${blockSettings.count}...`);
+                            const postData = await generatePost(runSettings, logWrapper({ source: sourceName }));
+                            
+                            if (postData) {
+                                await db.collection('posts').add({
+                                    ...postData,
+                                    status: 'pending',
+                                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                                    platform: 'linkedin',
+                                    generatedBy: 'scheduler'
+                                });
+                                logSystem('success', `Automação: Post criado (${format})`, postData.topic);
+                                console.log(`✅ Geração item ${i+1} concluída com sucesso.`);
+                            } else {
+                                console.warn(`⚠️ Geração item ${i+1} retornou nulo (Erro ou PDF não achado).`);
                             }
+                        } catch (err) { 
+                            console.error(`❌ Erro fatal na geração: ${err.message}`);
+                            logSystem('error', `Falha Automação (${format})`, err.message);
                         }
-                    })();
+                    }
                 }
             }
         };
@@ -187,46 +188,42 @@ async function runScheduler() {
                 if (canPub) {
                     console.log(`🚀 DISPARANDO PUBLICAÇÃO (Slot ${slot.id})...`);
                     
-                    // Busca posts aprovados (FIFO - Mais antigos primeiro)
                     const q = await db.collection('posts')
                         .where('status', '==', 'approved')
-                        .orderBy('createdAt', 'asc') // Pega o mais antigo da fila
+                        .orderBy('createdAt', 'asc')
                         .limit(slot.count)
                         .get();
                     
                     if (q.empty) {
                         console.log("📭 Fila de aprovação vazia. Nada para publicar.");
-                        logSystem('info', `Slot ${slot.time}: Fila vazia`, null);
                     } else {
-                        // Executa publicação em background
-                        (async () => {
-                            for (const doc of q.docs) {
-                                const postData = doc.data();
-                                console.log(`📤 Publicando: ${postData.topic}`);
-                                
-                                let assetUrn = null;
-                                if (postData.imageUrl) {
-                                    try {
-                                        assetUrn = await uploadImageOnly(postData.imageUrl, settings, postData.mediaType);
-                                    } catch (uploadErr) {
-                                        console.error(`Erro upload: ${uploadErr.message}`);
-                                        if (postData.mediaType === 'pdf') continue; // Pula se PDF falhar
-                                    }
-                                }
-
-                                const result = await publishPost(postData, settings, assetUrn);
-                                if (result.success) {
-                                    await db.collection('posts').doc(doc.id).update({
-                                        status: 'published',
-                                        publishedAt: admin.firestore.FieldValue.serverTimestamp(),
-                                        linkedinPostId: result.id
-                                    });
-                                    logSystem('success', `Publicado Automaticamente`, result.id);
-                                } else {
-                                    logSystem('error', `Falha Publicação Auto`, result.error);
+                        // --- MUDANÇA CRÍTICA: AWAIT AQUI TAMBÉM ---
+                        for (const doc of q.docs) {
+                            const postData = doc.data();
+                            console.log(`📤 Publicando: ${postData.topic}`);
+                            
+                            let assetUrn = null;
+                            if (postData.imageUrl) {
+                                try {
+                                    assetUrn = await uploadImageOnly(postData.imageUrl, settings, postData.mediaType);
+                                } catch (uploadErr) {
+                                    console.error(`Erro upload: ${uploadErr.message}`);
+                                    if (postData.mediaType === 'pdf') continue;
                                 }
                             }
-                        })();
+
+                            const result = await publishPost(postData, settings, assetUrn);
+                            if (result.success) {
+                                await db.collection('posts').doc(doc.id).update({
+                                    status: 'published',
+                                    publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                    linkedinPostId: result.id
+                                });
+                                logSystem('success', `Publicado Automaticamente`, result.id);
+                            } else {
+                                logSystem('error', `Falha Publicação Auto`, result.error);
+                            }
+                        }
                     }
                 }
             }
@@ -339,9 +336,15 @@ app.post('/api/unsplash-search', async (req, res) => {
 
 // Rota Cron (Chamada pelo UptimeRobot)
 app.get('/api/cron', async (req, res) => {
-    // Não usamos await aqui para não dar timeout no UptimeRobot
-    runScheduler().catch(err => console.error("Erro Fatal Scheduler:", err));
-    res.json({ status: 'Scheduler Triggered', timestamp: new Date().toISOString() });
+    // Agora aguardamos a execução para garantir logs
+    console.log("📥 Recebido ping do UptimeRobot.");
+    try {
+        await runScheduler();
+        res.json({ status: 'Scheduler Finished', timestamp: new Date().toISOString() });
+    } catch (e) {
+        console.error("🔥 Erro Crítico no Cron:", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.use(express.static(path.join(__dirname, '../client/dist')));
