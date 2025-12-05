@@ -6,7 +6,7 @@ const path = require('path');
 
 // IMPORTS DOS UTILITÁRIOS
 const { generatePost, generateReaction } = require('./utils/gemini');
-const { publishPost, uploadImageOnly } = require('./utils/linkedin'); 
+const { publishPost, uploadImageOnly } = require('./utils/linkedin');
 const { generateMedia, uploadToCloudinary, searchUnsplash } = require('./utils/mediaHandler');
 
 require('dotenv').config();
@@ -54,42 +54,42 @@ const logWrapper = (s) => (t, m, d) => logSystem(t, m, d, s);
 
 function isTimeInWindow(scheduledTime, currentTimeStr) {
     if (!scheduledTime || !currentTimeStr) return false;
-    
-    const toMinutes = (str) => { 
-        const [h, m] = str.split(':').map(Number); 
-        return h * 60 + m; 
+
+    const toMinutes = (str) => {
+        const [h, m] = str.split(':').map(Number);
+        return h * 60 + m;
     };
-    
+
     const schedM = toMinutes(scheduledTime);
     const currM = toMinutes(currentTimeStr);
-    
+
     // Janela de 20 minutos
     const diff = currM - schedM;
-    
+
     if (diff >= 0 && diff <= 20) return true;
-    
+
     // Tratamento para virada do dia
     const diffDay = (currM + 1440) - schedM;
     if (diffDay >= 0 && diffDay <= 20) return true;
-    
+
     return false;
 }
 
 // --- TRAVA DIÁRIA ---
 async function checkAndSetLock(type, scheduledTime) {
-    const today = new Date().toLocaleString("en-CA", { timeZone: "America/Sao_Paulo" }).split(',')[0]; 
-    const lockId = `lock_${today}_${type}_${scheduledTime.replace(':','')}`;
+    const today = new Date().toLocaleString("en-CA", { timeZone: "America/Sao_Paulo" }).split(',')[0];
+    const lockId = `lock_${today}_${type}_${scheduledTime.replace(':', '')}`;
     const lockRef = db.collection('scheduler_locks').doc(lockId);
-    
+
     try {
         const doc = await lockRef.get();
         if (doc.exists) {
             console.log(`🔒 Trava existente: ${lockId} (Já executado hoje)`);
             return false;
         }
-        await lockRef.set({ 
-            createdAt: admin.firestore.FieldValue.serverTimestamp(), 
-            type, 
+        await lockRef.set({
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            type,
             scheduledTime,
             status: 'locked'
         });
@@ -105,23 +105,23 @@ async function checkAndSetLock(type, scheduledTime) {
 // ==========================================
 async function runScheduler() {
     console.log("⏰ --- INICIANDO VERIFICAÇÃO DO SCHEDULER ---");
-    
+
     const settingsDoc = await db.collection('settings').doc('global').get();
     if (!settingsDoc.exists) return console.log("❌ Configurações não encontradas.");
     const settings = settingsDoc.data();
 
     const now = new Date();
     const brazilTime = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    const currentHM = brazilTime.getHours().toString().padStart(2, '0') + ':' + 
-                      brazilTime.getMinutes().toString().padStart(2, '0');
-    
-    console.log(`🕒 Hora Servidor (UTC): ${now.toISOString().substring(11,16)}`);
+    const currentHM = brazilTime.getHours().toString().padStart(2, '0') + ':' +
+        brazilTime.getMinutes().toString().padStart(2, '0');
+
+    console.log(`🕒 Hora Servidor (UTC): ${now.toISOString().substring(11, 16)}`);
     console.log(`🇧🇷 Hora Brasil (Ref):   ${currentHM}`);
 
     // --- 1. CRIAÇÃO (AI) ---
     const creation = settings.scheduler?.creation;
     if (creation && creation.enabled) {
-        
+
         // Função auxiliar para processar blocos sequencialmente
         const checkBlock = async (blockSettings, format, sourceName, lockType) => {
             if (!blockSettings.enabled) return;
@@ -134,14 +134,14 @@ async function runScheduler() {
                 if (canRun) {
                     console.log(`🚀 DISPARANDO CRIAÇÃO: ${sourceName}`);
                     const runSettings = { ...settings, postFormat: format };
-                    
+
                     // --- MUDANÇA CRÍTICA: AGORA USAMOS AWAIT ---
                     // Isso obriga o servidor a esperar o processo terminar antes de finalizar o request do Cron
-                    for(let i=0; i < (blockSettings.count || 1); i++) {
+                    for (let i = 0; i < (blockSettings.count || 1); i++) {
                         try {
-                            console.log(`⏳ Iniciando geração item ${i+1}/${blockSettings.count}...`);
+                            console.log(`⏳ Iniciando geração item ${i + 1}/${blockSettings.count}...`);
                             const postData = await generatePost(runSettings, logWrapper({ source: sourceName }));
-                            
+
                             if (postData) {
                                 await db.collection('posts').add({
                                     ...postData,
@@ -151,11 +151,11 @@ async function runScheduler() {
                                     generatedBy: 'scheduler'
                                 });
                                 logSystem('success', `Automação: Post criado (${format})`, postData.topic);
-                                console.log(`✅ Geração item ${i+1} concluída com sucesso.`);
+                                console.log(`✅ Geração item ${i + 1} concluída com sucesso.`);
                             } else {
-                                console.warn(`⚠️ Geração item ${i+1} retornou nulo (Erro ou PDF não achado).`);
+                                console.warn(`⚠️ Geração item ${i + 1} retornou nulo (Erro ou PDF não achado).`);
                             }
-                        } catch (err) { 
+                        } catch (err) {
                             console.error(`❌ Erro fatal na geração: ${err.message}`);
                             logSystem('error', `Falha Automação (${format})`, err.message);
                         }
@@ -164,9 +164,9 @@ async function runScheduler() {
             }
         };
 
-        const imgBlock = creation.linkedin_image || creation.linkedin; 
+        const imgBlock = creation.linkedin_image || creation.linkedin;
         if (imgBlock) await checkBlock(imgBlock, 'image', 'cron-image', 'linkedin_image');
-        
+
         const pdfBlock = creation.linkedin_pdf;
         if (pdfBlock) await checkBlock(pdfBlock, 'pdf', 'cron-pdf', 'linkedin_pdf');
 
@@ -178,7 +178,7 @@ async function runScheduler() {
     const pub = settings.scheduler?.publishing;
     if (pub && pub.enabled) {
         const activeSlots = pub.slots.filter(s => s.enabled);
-        
+
         for (const slot of activeSlots) {
             const isTime = isTimeInWindow(slot.time, currentHM);
             console.log(`🔎 Check Publicação [Slot ${slot.id}]: Agendado ${slot.time} vs Atual ${currentHM} -> ${isTime ? '✅ HORA!' : '❌ Aguardando'}`);
@@ -187,13 +187,13 @@ async function runScheduler() {
                 const canPub = await checkAndSetLock('publishing_slot', slot.time);
                 if (canPub) {
                     console.log(`🚀 DISPARANDO PUBLICAÇÃO (Slot ${slot.id})...`);
-                    
+
                     const q = await db.collection('posts')
                         .where('status', '==', 'approved')
                         .orderBy('createdAt', 'asc')
                         .limit(slot.count)
                         .get();
-                    
+
                     if (q.empty) {
                         console.log("📭 Fila de aprovação vazia. Nada para publicar.");
                     } else {
@@ -201,7 +201,7 @@ async function runScheduler() {
                         for (const doc of q.docs) {
                             const postData = doc.data();
                             console.log(`📤 Publicando: ${postData.topic}`);
-                            
+
                             let assetUrn = null;
                             if (postData.imageUrl) {
                                 try {
@@ -231,7 +231,7 @@ async function runScheduler() {
     } else {
         console.log("⏸️ Scheduler de Publicação está DESATIVADO nas configurações.");
     }
-    
+
     console.log("🏁 Verificação concluída.\n");
 }
 
@@ -242,25 +242,25 @@ async function runScheduler() {
 // Rota 1: Gerar Conteúdo (Autoral ou Manual)
 app.post('/api/generate-content', async (req, res) => {
     try {
-        const { format, manualTopic } = req.body;
+        const { format, manualTopic, manualImage } = req.body;
         console.log(`🤖 Geração Manual. Format: ${format}. Topic: ${manualTopic || 'Auto'}`);
-        
+
         const settingsDoc = await db.collection('settings').doc('global').get();
         if (!settingsDoc.exists) return res.status(400).json({ error: "Configurações não encontradas." });
-        
+
         const settings = settingsDoc.data();
         settings.postFormat = format;
-        
-        const post = await generatePost(settings, logWrapper({ source: 'manual-trigger' }), manualTopic);
-        
+
+        const post = await generatePost(settings, logWrapper({ source: 'manual-trigger' }), manualTopic, manualImage);
+
         if (!post) throw new Error("Falha ao gerar post.");
-        
-        await db.collection('posts').add({ 
-            ...post, 
-            status: 'pending', 
-            createdAt: admin.firestore.FieldValue.serverTimestamp() 
+
+        await db.collection('posts').add({
+            ...post,
+            status: 'pending',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-        
+
         res.json({ success: true, post });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -270,11 +270,11 @@ app.post('/api/generate-content', async (req, res) => {
 // NOVA ROTA: GERAR REAÇÃO (Re-post / Comment)
 app.post('/api/generate-reaction', async (req, res) => {
     try {
-        const { type, context, content, link } = req.body;
+        const { type, context, content, link, image } = req.body;
         console.log(`💬 Gerando Reação (${type})...`);
         const settingsDoc = await db.collection('settings').doc('global').get();
         const settings = settingsDoc.data();
-        const text = await generateReaction(type, context, content, link, settings);
+        const text = await generateReaction(type, context, content, link, settings, image);
         res.json({ success: true, text });
     } catch (error) {
         console.error("Erro Reaction:", error);
@@ -319,7 +319,7 @@ app.post('/api/regenerate-image', async (req, res) => {
     try {
         const { postId, prompt } = req.body;
         const settingsDoc = await db.collection('settings').doc('global').get();
-        const settings = { ...settingsDoc.data(), activeFormat: 'image', forceImageGeneration: true }; 
+        const settings = { ...settingsDoc.data(), activeFormat: 'image', forceImageGeneration: true };
         const media = await generateMedia(prompt, settings, logWrapper({ source: 'regenerate' }));
         await db.collection('posts').doc(postId).update({ imageUrl: media.imageUrl, modelUsed: media.modelUsed });
         res.json({ success: true, imageUrl: media.imageUrl, modelUsed: media.modelUsed });
@@ -348,7 +348,15 @@ app.get('/api/cron', async (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, '../client/dist')));
-app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, '../client/dist/index.html')));
+app.get(/.*/, (req, res) => {
+    const indexPath = path.join(__dirname, '../client/dist/index.html');
+    res.sendFile(indexPath, (err) => {
+        if (err) {
+            console.error("Error serving index.html:", err.message);
+            res.status(404).send("Client build not found");
+        }
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server on ${PORT}`));

@@ -2,21 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Share2, Link as LinkIcon, AlertTriangle, PenTool, MessageCircle, Copy, X, Loader2, Target, Wand2 } from 'lucide-react';
+import { Share2, Image as ImageIcon, AlertTriangle, PenTool, MessageCircle, Copy, X, Loader2, Target, Wand2, Upload } from 'lucide-react';
 
 export default function Repost() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
-    
+
     // Dados de entrada
     const [incomingText, setIncomingText] = useState('');
-    const [extractedLink, setExtractedLink] = useState('');
-    
+    const [selectedImage, setSelectedImage] = useState(null);
+
     // Configurações e Contextos
     const [settings, setSettings] = useState(null);
     const [selectedAction, setSelectedAction] = useState(null); // 'authorial' | 'repost' | 'comment'
     const [selectedContext, setSelectedContext] = useState('');
-    
+
     // Estados de Geração
     const [loadingAction, setLoadingAction] = useState(null); // 'authorial' | 'reaction'
     const [generatedText, setGeneratedText] = useState('');
@@ -29,12 +29,14 @@ export default function Repost() {
         const url = searchParams.get('url') || '';
         setIncomingText(text);
 
-        // Tenta extrair link do texto se a URL vier vazia ou misturada
-        const combined = `${title} ${text} ${url}`;
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        const found = combined.match(urlRegex);
-        if (found && found.length > 0) setExtractedLink(found[0]);
-        else if (url && url.startsWith('http')) setExtractedLink(url);
+        // Se a URL for uma imagem, usa ela
+        if (url && (url.match(/\.(jpeg|jpg|gif|png|webp)$/i))) {
+            setSelectedImage(url);
+        } else {
+            // Tenta achar imagem no texto
+            const imgMatch = text.match(/(https?:\/\/[^\s]+?\.(?:jpeg|jpg|gif|png|webp))/i);
+            if (imgMatch) setSelectedImage(imgMatch[0]);
+        }
 
         // 2. Carrega configurações para ter os contextos
         const fetchSettings = async () => {
@@ -45,21 +47,51 @@ export default function Repost() {
             } catch (e) { console.error("Erro ao carregar settings", e); }
         };
         fetchSettings();
+
+        // 3. Paste Handler
+        const handlePaste = (e) => {
+            const items = e.clipboardData?.items;
+            if (items) {
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf("image") !== -1) {
+                        const blob = items[i].getAsFile();
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setSelectedImage(ev.target.result);
+                        reader.readAsDataURL(blob);
+                        break;
+                    }
+                }
+            }
+        };
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
     }, [searchParams]);
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setSelectedImage(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     // AÇÃO 1: POST AUTORAL
     const handleAuthorialPost = async () => {
         setLoadingAction('authorial');
         try {
             const getApiUrl = (ep) => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? `http://localhost:3000/api/${ep}` : `/api/${ep}`;
-            
+
             const response = await fetch(getApiUrl('generate-content'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     format: 'image',
-                    manualTopic: extractedLink || incomingText 
-                }) 
+                    manualTopic: incomingText || (selectedImage ? "Análise da Imagem" : ""),
+                    manualImage: selectedImage
+                })
             });
             const result = await response.json();
             if (result.success) {
@@ -78,16 +110,16 @@ export default function Repost() {
         setLoadingAction('reaction');
         try {
             const getApiUrl = (ep) => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? `http://localhost:3000/api/${ep}` : `/api/${ep}`;
-            
+
             const response = await fetch(getApiUrl('generate-reaction'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    type: selectedAction, 
+                body: JSON.stringify({
+                    type: selectedAction,
                     context: selectedContext,
                     content: incomingText,
-                    link: extractedLink
-                }) 
+                    image: selectedImage
+                })
             });
             const result = await response.json();
             if (result.success) {
@@ -125,12 +157,12 @@ export default function Repost() {
                         })}
                     </div>
                 )}
-                <button 
-                    onClick={handleReaction} 
-                    disabled={!selectedContext || loadingAction === 'reaction'} 
+                <button
+                    onClick={handleReaction}
+                    disabled={!selectedContext || loadingAction === 'reaction'}
                     className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 mt-2"
                 >
-                    {loadingAction === 'reaction' ? <Loader2 className="w-5 h-5 animate-spin"/> : <PenTool className="w-5 h-5"/>}
+                    {loadingAction === 'reaction' ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenTool className="w-5 h-5" />}
                     Gerar {type === 'repost' ? 'Re-post' : 'Comentário'}
                 </button>
             </div>
@@ -145,14 +177,14 @@ export default function Repost() {
                     <Wand2 className="w-4 h-4 text-blue-400" /> Criar Post Original
                 </h4>
                 <p className="text-sm text-gray-400">
-                    O sistema usará o link/texto compartilhado como <strong>Tópico Principal</strong> e criará um post completo (Texto + Imagem + PDF se aplicável) usando suas configurações padrão.
+                    O sistema usará a imagem e texto compartilhados como <strong>Tópico Principal</strong> e criará um post completo.
                 </p>
-                <button 
-                    onClick={handleAuthorialPost} 
+                <button
+                    onClick={handleAuthorialPost}
                     disabled={loadingAction === 'authorial'}
                     className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 mt-2"
                 >
-                    {loadingAction === 'authorial' ? <Loader2 className="w-5 h-5 animate-spin"/> : <PenTool className="w-5 h-5"/>}
+                    {loadingAction === 'authorial' ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenTool className="w-5 h-5" />}
                     Gerar Post Completo
                 </button>
             </div>
@@ -170,20 +202,33 @@ export default function Repost() {
             {/* CONTEÚDO RECEBIDO */}
             <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 space-y-4">
                 <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-lg">
-                    {extractedLink ? <a href={extractedLink} target="_blank" rel="noreferrer" className="text-blue-300 underline break-all text-sm flex items-center gap-2"><LinkIcon className="w-4 h-4"/>{extractedLink}</a> : <div className="text-yellow-500 text-sm flex items-center gap-2"><AlertTriangle className="w-4 h-4"/> Sem link detectado</div>}
+                    {selectedImage ? (
+                        <div className="relative w-full h-48 bg-black/50 rounded-lg overflow-hidden mb-2">
+                            <img src={selectedImage} alt="Preview" className="w-full h-full object-contain" />
+                            <button onClick={() => setSelectedImage(null)} className="absolute top-2 right-2 bg-red-600 p-1 rounded-full text-white"><X className="w-4 h-4" /></button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-gray-600 rounded-lg mb-2 hover:border-blue-500 transition-colors">
+                            <label className="cursor-pointer flex flex-col items-center gap-2 w-full h-full justify-center">
+                                <Upload className="w-8 h-8 text-gray-400" />
+                                <span className="text-sm text-gray-400">Clique para enviar uma imagem</span>
+                                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                            </label>
+                        </div>
+                    )}
                     <p className="text-gray-400 text-xs mt-2 line-clamp-3 italic">"{incomingText}"</p>
                 </div>
 
                 {/* SELEÇÃO DE AÇÃO */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    
+
                     {/* Botão 1: Re-post */}
                     <button onClick={() => { setSelectedAction('repost'); setSelectedContext(''); }} className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${selectedAction === 'repost' ? 'bg-purple-600/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'}`}>
                         <Share2 className="w-8 h-8 mb-1" />
                         <span className="font-bold">Criar Re-post</span>
-                        <span className="text-[10px] opacity-70">Opinião sobre o link</span>
+                        <span className="text-[10px] opacity-70">Opinião sobre a imagem</span>
                     </button>
-                    
+
                     {/* Botão 2: Comentário */}
                     <button onClick={() => { setSelectedAction('comment'); setSelectedContext(''); }} className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${selectedAction === 'comment' ? 'bg-green-600/20 border-green-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'}`}>
                         <MessageCircle className="w-8 h-8 mb-1" />
@@ -195,7 +240,7 @@ export default function Repost() {
                     <button onClick={() => { setSelectedAction('authorial'); setSelectedContext(''); }} className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${selectedAction === 'authorial' ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'}`}>
                         <PenTool className="w-8 h-8 mb-1" />
                         <span className="font-bold">Post Autoral</span>
-                        <span className="text-[10px] opacity-70">Novo post baseado no link</span>
+                        <span className="text-[10px] opacity-70">Novo post baseado na imagem</span>
                     </button>
                 </div>
 
@@ -211,17 +256,17 @@ export default function Repost() {
                     <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-2xl flex flex-col shadow-2xl animate-slideUp">
                         <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/50 rounded-t-xl">
                             <h3 className="text-xl font-bold text-white flex items-center gap-2">Texto Gerado</h3>
-                            <button onClick={() => setShowResultModal(false)} className="text-gray-400 hover:text-white"><X className="w-6 h-6"/></button>
+                            <button onClick={() => setShowResultModal(false)} className="text-gray-400 hover:text-white"><X className="w-6 h-6" /></button>
                         </div>
                         <div className="p-6">
                             <textarea readOnly value={generatedText} className="w-full h-64 bg-black/30 border border-gray-600 rounded-lg p-4 text-gray-300 text-sm font-mono focus:outline-none" />
                         </div>
                         <div className="p-4 border-t border-gray-700 bg-gray-800/30 rounded-b-xl flex justify-end">
-                            <button 
-                                onClick={() => { navigator.clipboard.writeText(generatedText); alert("Copiado!"); }} 
+                            <button
+                                onClick={() => { navigator.clipboard.writeText(generatedText); alert("Copiado!"); }}
                                 className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2"
                             >
-                                <Copy className="w-5 h-5"/> Copiar Texto
+                                <Copy className="w-5 h-5" /> Copiar Texto
                             </button>
                         </div>
                     </div>

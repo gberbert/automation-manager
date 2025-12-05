@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { generateMedia } = require('./mediaHandler');
+const { generateMedia, uploadToCloudinary } = require('./mediaHandler');
 const admin = require('firebase-admin');
 
 function forceCleanText(text) {
@@ -32,7 +32,7 @@ async function markTopicAsFailed(topic) {
     try {
         const db = admin.firestore();
         const ref = db.collection('settings').doc('global');
-        
+
         await db.runTransaction(async (t) => {
             const doc = await t.get(ref);
             if (!doc.exists) return;
@@ -64,7 +64,7 @@ async function markTopicAsFailed(topic) {
 }
 
 // --- GERAR REAÇÃO (MANTIDO) ---
-async function generateReaction(type, context, content, link, settings) {
+async function generateReaction(type, context, content, link, settings, image) {
     if (!settings.geminiApiKey) throw new Error("Gemini Key Missing");
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     const model = genAI.getGenerativeModel({ model: settings.geminiModel || "gemini-2.5-flash" });
@@ -75,21 +75,30 @@ async function generateReaction(type, context, content, link, settings) {
     VOCÊ ESTÁ NO PAPEL DE: ${context}
     TAREFA: Escrever um ${type === 'repost' ? 'TEXTO PARA RECOMPARTILHAR (REPOST)' : 'COMENTÁRIO'} sobre o conteúdo abaixo.
     CONTEÚDO ORIGINAL: "${content}". Link: ${link || 'N/A'}
+    ${image ? 'IMAGEM: Uma imagem foi fornecida como contexto principal.' : ''}
     SEU OBJETIVO: ${template}
     REGRAS: Seja natural. Use o tom de voz do perfil. Retorne APENAS o texto final. Idioma: ${settings.language === 'pt-BR' ? "Português (Brasil)" : "English"}
     `;
-    const result = await model.generateContent(prompt);
+
+    const parts = [{ text: prompt }];
+    if (image && image.startsWith('data:image')) {
+        const mimeType = image.split(';')[0].split(':')[1];
+        const data = image.split(',')[1];
+        parts.push({ inlineData: { data, mimeType } });
+    }
+
+    const result = await model.generateContent(parts);
     return result.response.text().trim();
 }
 
 // --- FUNÇÃO PRINCIPAL ---
-async function generatePost(settings, logFn = null, manualTopic = null) {
-    if (!settings.geminiApiKey) { if(logFn) await logFn('error', 'Gemini Key Missing'); return null; }
+async function generatePost(settings, logFn = null, manualTopic = null, manualImage = null) {
+    if (!settings.geminiApiKey) { if (logFn) await logFn('error', 'Gemini Key Missing'); return null; }
 
     const postFormat = settings.postFormat || 'image';
-    const isPdfMode = postFormat === 'pdf'; 
-    settings.activeFormat = postFormat; 
-    
+    const isPdfMode = postFormat === 'pdf';
+    settings.activeFormat = postFormat;
+
     // --- 1. SELEÇÃO DO TÓPICO ---
     let randomTopic;
     let topicIndex = -1; // <--- CORREÇÃO: Inicializado aqui para existir no escopo da função
@@ -100,7 +109,7 @@ async function generatePost(settings, logFn = null, manualTopic = null) {
     } else {
         const targetStrategy = isPdfMode ? settings.strategyPdf : settings.strategyImage;
         const pool = targetStrategy?.topics || settings.topics || [];
-        
+
         // Filtra tópicos que já estão com erro
         const validPool = pool.filter(t => !t.startsWith("⚠️"));
 
@@ -111,11 +120,11 @@ async function generatePost(settings, logFn = null, manualTopic = null) {
                 throw new Error(`Pool de Tópicos vazio.`);
             }
         }
-        
+
         const usePool = validPool.length > 0 ? validPool : pool;
         topicIndex = Math.floor(Math.random() * usePool.length); // <--- CORREÇÃO: Apenas atribuição
         randomTopic = usePool[topicIndex];
-        
+
         console.log(`🎲 Tópico selecionado: "${randomTopic}"`);
     }
 
@@ -139,20 +148,20 @@ async function generatePost(settings, logFn = null, manualTopic = null) {
             console.log("🧠 Simplificando tópico para busca...");
             const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
             const m = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            
+
             const searchPrompt = `
             ROLE: Search Query Optimizer API.
             TASK: Convert the topic "${randomTopic}" into a single line of 3-5 efficient search keywords for an academic database.
             CONSTRAINTS: Output ONLY the keywords separated by spaces. NO intro. NO bullets. NO new lines.
             `;
-            
+
             const t = await m.generateContent(searchPrompt);
             const simplifiedQuery = t.response.text().replace(/[\r\n]+/g, " ").trim().substring(0, 100);
-            
+
             console.log(`🔍 Query Simplificada: "${simplifiedQuery}"`);
-            
+
             const pdfResult = await generateMedia(simplifiedQuery, { ...settings, activeFormat: 'pdf', pdfDateFilter }, logFn);
-            
+
             pdfContentBase64 = pdfResult.pdfBase64;
             pdfDownloadLink = pdfResult.imageUrl;
             pdfModelUsed = pdfResult.modelUsed;
@@ -172,37 +181,49 @@ async function generatePost(settings, logFn = null, manualTopic = null) {
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     const textModel = genAI.getGenerativeModel({ model: settings.geminiModel || "gemini-2.5-flash" });
     const templateBase = targetStrategy?.template || "Crie um post profissional.";
-    
+
     const finalPrompt = `
     ${templateBase}
     TÓPICO: "${randomTopic}"
     ${extraContext}
+    ${manualImage ? 'NOTA: Uma imagem foi fornecida manualmente. Use-a como base principal para o texto.' : ''}
     CONTEXTO: "${randomContext}"
     IDIOMA: ${settings.language === 'pt-BR' ? "Portuguese (Brazil)" : "English"}
     OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "..." }
     RULES: No markdown blocks. NO PLACEHOLDERS LIKE [Link]. Finish with a call to action to read the attachment.
     `;
-    
+
     let postContent = { content: "", imagePrompt: "" };
     try {
         const parts = [{ text: finalPrompt }];
         if (pdfContentBase64) parts.push({ inlineData: { data: pdfContentBase64, mimeType: "application/pdf" } });
+        if (manualImage && manualImage.startsWith('data:image')) {
+            const mimeType = manualImage.split(';')[0].split(':')[1];
+            const data = manualImage.split(',')[1];
+            parts.push({ inlineData: { data, mimeType } });
+        }
         const result = await textModel.generateContent(parts);
         const parsed = robustParse(result.response.text());
         postContent.content = forceCleanText(parsed.content);
         if (pdfDownloadLink && !postContent.content.includes(pdfDownloadLink)) postContent.content += `\n\n📄 Leia o estudo completo: ${pdfDownloadLink}`;
         postContent.imagePrompt = parsed.imagePrompt || `Professional photo about ${randomTopic}`;
     } catch (e) {
-        if(logFn) await logFn('error', 'Erro Texto Gemini', e.message);
+        if (logFn) await logFn('error', 'Erro Texto Gemini', e.message);
         return null;
     }
 
     // --- 5. IMAGEM FINAL ---
     let finalMediaData = { imageUrl: '', modelUsed: 'None' };
     try {
-        const imageSettings = { ...settings, activeFormat: 'image', forceImageGeneration: true };
-        finalMediaData = await generateMedia(postContent.imagePrompt, imageSettings, logFn);
-    } catch (e) {}
+        if (manualImage) {
+            console.log("📸 Usando imagem manual fornecida...");
+            const uploadedUrl = await uploadToCloudinary(manualImage, settings);
+            finalMediaData = { imageUrl: uploadedUrl, modelUsed: 'Manual Upload' };
+        } else {
+            const imageSettings = { ...settings, activeFormat: 'image', forceImageGeneration: true };
+            finalMediaData = await generateMedia(postContent.imagePrompt, imageSettings, logFn);
+        }
+    } catch (e) { }
 
     const finalMediaType = (isPdfMode && pdfDownloadLink) ? 'pdf' : 'image';
 
@@ -210,10 +231,10 @@ async function generatePost(settings, logFn = null, manualTopic = null) {
         topic: randomTopic,
         content: postContent.content,
         imagePrompt: postContent.imagePrompt,
-        imageUrl: finalMediaData.imageUrl, 
+        imageUrl: finalMediaData.imageUrl,
         modelUsed: isPdfMode ? `${pdfModelUsed} + ${finalMediaData.modelUsed}` : finalMediaData.modelUsed,
         mediaType: finalMediaType,
-        originalPdfUrl: pdfDownloadLink, 
+        originalPdfUrl: pdfDownloadLink,
         manualRequired: false,
         metaIndexes: {
             // Agora topicIndex existe no escopo, então não dará erro

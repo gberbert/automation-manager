@@ -4,12 +4,12 @@
     "client": "cd client && npm run dev",
     "server": "cd server && npm run dev",
     "install:all": "npm install && cd client && npm install && cd ../server && npm install",
-    
     "build-render": "cd client && npm install --include=dev && npm run build && cd ../server && npm install",
     "start": "node server/index.js"
   },
   "dependencies": {
-    "firebase": "^12.6.0"
+    "firebase": "^12.6.0",
+    "multer": "^2.0.2"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

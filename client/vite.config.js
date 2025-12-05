@@ -26,12 +26,18 @@ export default defineConfig({
         // --- NOVO: CONFIGURAÇÃO DE SHARE TARGET ---
         share_target: {
           action: "/repost",
-          method: "GET",
-          enctype: "application/x-www-form-urlencoded",
+          method: "POST",
+          enctype: "multipart/form-data",
           params: {
             title: "title",
             text: "text",
-            url: "url"
+            url: "url",
+            files: [
+              {
+                name: "media",
+                accept: ["image/*", "image/jpeg", "image/png", "image/webp", "image/gif"]
+              }
+            ]
           }
         },
         // ------------------------------------------
