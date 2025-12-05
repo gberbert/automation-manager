@@ -18,9 +18,12 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       // workbox options removed because we are using injectManifest
       manifest: {
+        id: '/',
+        scope: '/',
         name: 'Automation Manager',
         short_name: 'AutoManager',
         description: 'Automate your LinkedIn posts with AI',
+        categories: ['productivity', 'utilities'],
         theme_color: '#1a1a1a',
         background_color: '#1a1a1a',
         display: 'standalone',
@@ -38,7 +41,17 @@ export default defineConfig({
             files: [
               {
                 name: "media",
-                accept: ["image/*", "image/jpeg", "image/png", "image/webp", "image/gif"]
+                accept: [
+                  "image/jpeg",
+                  "image/png",
+                  "image/webp",
+                  "image/gif",
+                  ".jpg",
+                  ".jpeg",
+                  ".png",
+                  ".webp",
+                  ".gif"
+                ]
               }
             ]
           }
