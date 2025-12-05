@@ -67,6 +67,56 @@ export default function Repost() {
         return () => window.removeEventListener('paste', handlePaste);
     }, [searchParams]);
 
+    // 4. SHARE TARGET CHECK (PWA)
+    useEffect(() => {
+        const checkSharedContent = async () => {
+            if (searchParams.get('shared') === 'true') {
+                try {
+                    console.log("📥 Verificando conteúdo compartilhado via PWA...");
+                    // Abrir IDB
+                    const db = await new Promise((resolve, reject) => {
+                        const req = indexedDB.open('share-target', 1);
+                        req.onsuccess = (e) => resolve(e.target.result);
+                        req.onerror = (e) => reject(e);
+                    });
+
+                    // Ler dados
+                    const tx = db.transaction('shares', 'readwrite');
+                    const store = tx.objectStore('shares');
+                    const req = store.get('latest');
+
+                    req.onsuccess = () => {
+                        const data = req.result;
+                        if (data) {
+                            console.log("📦 Dados encontrados no IDB:", data);
+
+                            // 1. Define texto/URL
+                            // Prioridade: Selected Text > URL > Title
+                            const fullText = [data.text, data.url].filter(Boolean).join(' ');
+                            if (fullText) setIncomingText(fullText);
+
+                            // 2. Define Imagem (Blob para DataURL)
+                            if (data.file) {
+                                const reader = new FileReader();
+                                reader.onload = (ev) => setSelectedImage(ev.target.result);
+                                reader.readAsDataURL(data.file);
+                            }
+
+                            // 3. Importante: Limpar para não recarregar no futuro
+                            store.delete('latest');
+
+                            // Limpa URL da flag ?shared=true
+                            navigate('/repost', { replace: true });
+                        }
+                    };
+                } catch (e) {
+                    console.error("Erro ao recuperar share:", e);
+                }
+            }
+        };
+        checkSharedContent();
+    }, [searchParams]);
+
     const handleImageUpload = (e) => {
         const file = e.target.files[0];
         if (file) {

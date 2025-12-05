@@ -8,12 +8,15 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
-      workbox: {
-        // Isso diz ao PWA para NÃO interceptar rotas que começam com /api ou /auth
-        navigateFallbackDenylist: [/^\/api/, /^\/auth/],
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      devOptions: {
+        enabled: true,
+        type: 'module',
       },
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      // workbox options removed because we are using injectManifest
       manifest: {
         name: 'Automation Manager',
         short_name: 'AutoManager',
