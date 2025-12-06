@@ -246,14 +246,48 @@ export default function Repost() {
 
     // Renderizador da Seção Autoral (Novo)
     const renderAuthorialSection = () => {
+        // Obter tópicos disponíveis (Settings Strategy Image -> Topics ou Global Topics)
+        const topics = settings?.strategyImage?.topics || settings?.topics || [];
+
         return (
             <div className="space-y-4 animate-fadeIn mt-4 bg-gray-900/50 p-4 rounded-lg border border-gray-700">
                 <h4 className="text-white font-bold flex items-center gap-2">
                     <Wand2 className="w-4 h-4 text-blue-400" /> Criar Post Original
                 </h4>
                 <p className="text-sm text-gray-400">
-                    O sistema usará a imagem e texto compartilhados como <strong>Tópico Principal</strong> e criará um post completo.
+                    O sistema usará o link compartilhado como <strong>Fonte</strong>.
+                    Selecione um tópico abaixo para guiar o tema (ou deixe em branco para usar o texto do link).
                 </p>
+
+                {/* Seletor de Tópicos */}
+                <div className="bg-gray-800 p-3 rounded-lg border border-gray-600 max-h-40 overflow-y-auto">
+                    <label className="text-xs text-gray-400 font-bold mb-2 block sticky top-0 bg-gray-800 pb-1">TÓPICO (Opcional):</label>
+                    <div className="space-y-1">
+                        <label className="flex items-center gap-2 hover:bg-gray-700 p-1 rounded cursor-pointer">
+                            <input
+                                type="radio"
+                                name="topic"
+                                value=""
+                                checked={incomingText === (searchParams.get('text') || searchParams.get('title') || '')}
+                                onChange={() => setIncomingText(searchParams.get('text') || searchParams.get('title') || '')}
+                            />
+                            <span className="text-sm text-gray-300 italic">Automático (Baseado no Link/Texto)</span>
+                        </label>
+                        {topics.map((t, i) => (
+                            <label key={i} className="flex items-center gap-2 hover:bg-gray-700 p-1 rounded cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="topic"
+                                    value={t}
+                                    checked={incomingText === t}
+                                    onChange={(e) => setIncomingText(e.target.value)}
+                                />
+                                <span className="text-sm text-gray-300">{t}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
                 <button
                     onClick={handleAuthorialPost}
                     disabled={loadingAction === 'authorial'}

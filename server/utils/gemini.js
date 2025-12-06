@@ -40,12 +40,15 @@ async function fetchLinkContent(url) {
 
         let html = response.data;
         // Simple cleanup: remove scripts, styles, tags
-        html = html.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, "");
-        html = html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, "");
+        // remove all tags but keep text
+        html = html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "");
+        html = html.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gim, "");
         html = html.replace(/<[^>]+>/g, ' ');
         html = html.replace(/\s+/g, ' ').trim();
 
-        return html.substring(0, 3000); // Limit to ~3000 chars for context 
+        // Cap length, but ensure we have something
+        if (html.length < 50) return null; // Too short, probably blocked or empty
+        return html.substring(0, 4000); // Increase limit slightly to give more context 
     } catch (e) {
         console.warn(`⚠️ Erro ao acessar link ${url}: ${e.message}`);
         return null;
@@ -212,10 +215,13 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
     ${manualImage ? 'NOTA: Uma imagem foi fornecida manualmente. Use-a como base principal para o texto.' : ''}
     CONTEXTO: "${randomContext}"
     IDIOMA: ${settings.language === 'pt-BR' ? "Portuguese (Brazil)" : "English"}
-    OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "..." }
-    RULES: No markdown blocks. NO PLACEHOLDERS LIKE [Link].
-    NEGATIVE CONSTRAINT: Do NOT include the link (${pdfDownloadLink || 'external link'}) in the final text body. Just mention that the link will be in the first comment.
-    Finish with a call to action (e.g. "Link in comments").
+    OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "A detailed DALL-E 3 style description of an image that perfectly illustrates the text above. NOT generic. Visual details, lighting, style." }
+    RULES: 
+    - No markdown blocks. 
+    - NO PLACEHOLDERS LIKE [Link].
+    - CITATION: You MUST cite the article or publication mentioned in the external source to give the post authority (e.g., "According to...", "As highlighted in the article...").
+    - NEGATIVE CONSTRAINT: Do NOT include the actual URL link (${pdfDownloadLink || 'external link'}) in the final text body.
+    - ENDING: You MUST finish with the exact phrase: "Leia mais sobre o tema no link do artigo que estará nos comentários." or similar in the target language.
     `;
 
     let postContent = { content: "", imagePrompt: "" };
@@ -228,8 +234,53 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
             parts.push({ inlineData: { data, mimeType } });
         }
         const result = await textModel.generateContent(parts);
-        const parsed = robustParse(result.response.text());
+        const textResponse = result.response.text();
+        const parsed = robustParse(textResponse);
+
         postContent.content = forceCleanText(parsed.content);
+
+        // --- 4.1 FALLBACK IF JSON PARSING FAILS ---
+        if (!postContent.content) {
+            console.warn("⚠️ Falha no parsing JSON. Usando texto bruto como conteúdo.");
+            // Tenta limpar o JSON block manualmente e pega tudo
+            let rawText = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+            // Se ainda parecer JSON, tenta extrair 'content' com regex menos estrito
+            const contentMatch = rawText.match(/"content"\s*:\s*"([\s\S]*?)(?=",\s*"imagePrompt")/);
+            if (contentMatch) {
+                postContent.content = contentMatch[1];
+            } else {
+                // Se tudo falhar, usa o texto todo, mas avisa
+                postContent.content = rawText;
+            }
+            // Limpa suxeiras finais
+            postContent.content = forceCleanText(postContent.content);
+        }
+
+        // --- 4.2 IMAGE PROMPT LOGIC ---
+        if (parsed.imagePrompt && parsed.imagePrompt.length > 20) {
+            postContent.imagePrompt = parsed.imagePrompt;
+        } else {
+            // Fallback strong prompt if not provided by model
+            postContent.imagePrompt = `Editorial style photography for social media, featuring ${randomTopic}. Professional lighting, 8k resolution, cinematic composition.`;
+        }
+
+        // --- PROMPT INJECTION FOR BETTER IMAGES ---
+        const enhancedImagePrompt = `
+        Create a HIGHLY VISUAL, AWARD-WINNING PHOTOGRAPHY prompt based on this text: "${postContent.content.substring(0, 300)}...".
+        The image should NOT contain text. It should be metaphorical or directly illustrative of the subject "${randomTopic}".
+        Style: Commercial Photography, 8k, Ultra-Detailed.
+        `;
+
+        // Wait... I can't call Gemini again just for the prompt easily here without increasing latency.
+        // I will rely on the main prompt to give me a good "imagePrompt".
+        // I'll update the main prompt instruction instead (already done in previous plan, but let's reinforce).
+
+        // REINFORCING THE IMAGE PROMPT FROM THE MAIN GENERATION
+        // The main prompt already asks for "imagePrompt".
+        // Let's ensure we use it or a very strong constructed one.
+        if (!postContent.imagePrompt || postContent.imagePrompt.includes("Professional photo about")) {
+            postContent.imagePrompt = `A visually striking, professional editorial photograph representing "${randomTopic}". High contrast, cinematic lighting, 8k resolution.`;
+        }
 
         // Verifica se o link vazou para o texto
         if (pdfDownloadLink && postContent.content.includes(pdfDownloadLink)) {
