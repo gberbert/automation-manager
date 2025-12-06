@@ -99,12 +99,20 @@ export default function Repost() {
                             console.log("📦 Dados encontrados no IDB:", data);
 
                             // 1. Define texto/URL
-                            // Prioridade: Selected Text > URL > Title
-                            const fullText = data.text || '';
-                            if (fullText) setIncomingText(fullText);
+                            const textContent = data.text || '';
+                            if (textContent) setIncomingText(textContent);
 
-                            if (data.url && !data.url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                                setIncomingLink(data.url);
+                            // Lógica inteligente para extrair Link
+                            let foundLink = data.url;
+
+                            // Se a URL do share estiver vazia (comum no Android), tenta achar no texto
+                            if (!foundLink && textContent) {
+                                const linkMatch = textContent.match(/(https?:\/\/[^\s]+)/i);
+                                if (linkMatch) foundLink = linkMatch[0];
+                            }
+
+                            if (foundLink && !foundLink.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+                                setIncomingLink(foundLink);
                             }
 
                             // 2. Define Imagem (Blob para DataURL)
@@ -146,9 +154,8 @@ export default function Repost() {
         try {
             const getApiUrl = (ep) => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? `http://localhost:3000/api/${ep}` : `/api/${ep}`;
 
-            // Combine text and link for manual topic
+            // Combine text for manual topic, but send link separately
             let topic = incomingText || (selectedImage ? "Análise da Imagem" : "");
-            if (incomingLink) topic += `\nLink: ${incomingLink}`;
 
             const response = await fetch(getApiUrl('generate-content'), {
                 method: 'POST',
@@ -156,7 +163,8 @@ export default function Repost() {
                 body: JSON.stringify({
                     format: 'image',
                     manualTopic: topic,
-                    manualImage: selectedImage
+                    manualImage: selectedImage,
+                    manualLink: incomingLink // Send link explicitly
                 })
             });
             const result = await response.json();

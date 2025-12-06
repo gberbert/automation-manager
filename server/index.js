@@ -260,7 +260,7 @@ async function runScheduler() {
 // Rota 1: Gerar Conteúdo (Autoral ou Manual)
 app.post('/api/generate-content', async (req, res) => {
     try {
-        const { format, manualTopic, manualImage } = req.body;
+        const { format, manualTopic, manualImage, manualLink } = req.body;
         console.log(`🤖 Geração Manual. Format: ${format}. Topic: ${manualTopic || 'Auto'}`);
 
         const settingsDoc = await db.collection('settings').doc('global').get();
@@ -269,7 +269,7 @@ app.post('/api/generate-content', async (req, res) => {
         const settings = settingsDoc.data();
         settings.postFormat = format;
 
-        const post = await generatePost(settings, logWrapper({ source: 'manual-trigger' }), manualTopic, manualImage);
+        const post = await generatePost(settings, logWrapper({ source: 'manual-trigger' }), manualTopic, manualImage, manualLink);
 
         if (!post) throw new Error("Falha ao gerar post.");
 

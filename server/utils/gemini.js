@@ -92,7 +92,7 @@ async function generateReaction(type, context, content, link, settings, image) {
 }
 
 // --- FUNÇÃO PRINCIPAL ---
-async function generatePost(settings, logFn = null, manualTopic = null, manualImage = null) {
+async function generatePost(settings, logFn = null, manualTopic = null, manualImage = null, manualLink = null) {
     if (!settings.geminiApiKey) { if (logFn) await logFn('error', 'Gemini Key Missing'); return null; }
 
     const postFormat = settings.postFormat || 'image';
@@ -101,7 +101,7 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
 
     // --- 1. SELEÇÃO DO TÓPICO ---
     let randomTopic;
-    let topicIndex = -1; // <--- CORREÇÃO: Inicializado aqui para existir no escopo da função
+    let topicIndex = -1;
 
     if (manualTopic) {
         randomTopic = manualTopic;
@@ -109,22 +109,16 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
     } else {
         const targetStrategy = isPdfMode ? settings.strategyPdf : settings.strategyImage;
         const pool = targetStrategy?.topics || settings.topics || [];
-
-        // Filtra tópicos que já estão com erro
         const validPool = pool.filter(t => !t.startsWith("⚠️"));
 
         if (!validPool || validPool.length === 0) {
-            if (pool.length > 0) {
-                console.warn("⚠️ Pool só contém tópicos marcados com erro. Tentando um deles...");
-            } else {
-                throw new Error(`Pool de Tópicos vazio.`);
-            }
+            if (pool.length > 0) console.warn("⚠️ Pool só contém tópicos marcados com erro. Tentando um deles...");
+            else throw new Error(`Pool de Tópicos vazio.`);
         }
 
         const usePool = validPool.length > 0 ? validPool : pool;
-        topicIndex = Math.floor(Math.random() * usePool.length); // <--- CORREÇÃO: Apenas atribuição
+        topicIndex = Math.floor(Math.random() * usePool.length);
         randomTopic = usePool[topicIndex];
-
         console.log(`🎲 Tópico selecionado: "${randomTopic}"`);
     }
 
@@ -139,27 +133,30 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
         randomContext = typeof ctxItem === 'object' ? ctxItem.text : ctxItem;
     }
 
-    // --- 3. BUSCA DE MÍDIA ---
+    // --- 3. BUSCA DE MÍDIA (PDF) ---
     const pdfDateFilter = settings.strategyPdf?.dateFilter || '2024';
     let pdfContentBase64 = null; let pdfDownloadLink = ""; let pdfModelUsed = ""; let extraContext = "";
 
-    if (isPdfMode) {
+    // Se tiver manualLink, ele vira o "recurso externo" (similar ao PDF)
+    if (manualLink) {
+        pdfDownloadLink = manualLink;
+        extraContext = `FONTE EXTERNA: O conteúdo deve ser baseado neste link: "${manualLink}".`;
+    }
+    // Se não tiver link manual, e for modo PDF, busca PDF
+    else if (isPdfMode) {
         try {
             console.log("🧠 Simplificando tópico para busca...");
             const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
             const m = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
             const searchPrompt = `
             ROLE: Search Query Optimizer API.
             TASK: Convert the topic "${randomTopic}" into a single line of 3-5 efficient search keywords for an academic database.
             CONSTRAINTS: Output ONLY the keywords separated by spaces. NO intro. NO bullets. NO new lines.
             `;
-
             const t = await m.generateContent(searchPrompt);
             const simplifiedQuery = t.response.text().replace(/[\r\n]+/g, " ").trim().substring(0, 100);
 
             console.log(`🔍 Query Simplificada: "${simplifiedQuery}"`);
-
             const pdfResult = await generateMedia(simplifiedQuery, { ...settings, activeFormat: 'pdf', pdfDateFilter }, logFn);
 
             pdfContentBase64 = pdfResult.pdfBase64;
@@ -191,7 +188,7 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
     IDIOMA: ${settings.language === 'pt-BR' ? "Portuguese (Brazil)" : "English"}
     OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "..." }
     RULES: No markdown blocks. NO PLACEHOLDERS LIKE [Link].
-    NEGATIVE CONSTRAINT: Do NOT include the download link in the final text. Just mention that the link will be in the first comment.
+    NEGATIVE CONSTRAINT: Do NOT include the link (${pdfDownloadLink || 'external link'}) in the final text body. Just mention that the link will be in the first comment.
     Finish with a call to action (e.g. "Link in comments").
     `;
 
@@ -207,15 +204,12 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
         const result = await textModel.generateContent(parts);
         const parsed = robustParse(result.response.text());
         postContent.content = forceCleanText(parsed.content);
-        if (pdfDownloadLink && !postContent.content.includes(pdfDownloadLink)) {
-            // Link logic moved to comments. Keeping this block empty or just adding a hint if needed, 
-            // but per instructions we should NOT add the link to body.
-            // We can ensure the text mentions the comment.
-            if (!postContent.content.toLowerCase().includes('comentário') && !postContent.content.toLowerCase().includes('comments')) {
-                postContent.content += `\n\n(Link disponível no primeiro comentário)`;
-            }
+
+        // Verifica se o link vazou para o texto
+        if (pdfDownloadLink && postContent.content.includes(pdfDownloadLink)) {
+            postContent.content = postContent.content.replace(pdfDownloadLink, '(Link in comments)');
         }
-        postContent.imagePrompt = parsed.imagePrompt || `Professional photo about ${randomTopic}`;
+
     } catch (e) {
         if (logFn) await logFn('error', 'Erro Texto Gemini', e.message);
         return null;
@@ -234,7 +228,7 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
         }
     } catch (e) { }
 
-    const finalMediaType = (isPdfMode && pdfDownloadLink) ? 'pdf' : 'image';
+    const finalMediaType = (isPdfMode && pdfDownloadLink && !manualLink) ? 'pdf' : 'image'; // Se for link manual, é 'image' (ou text) mas com link extra
 
     return {
         topic: randomTopic,
@@ -243,10 +237,9 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
         imageUrl: finalMediaData.imageUrl,
         modelUsed: isPdfMode ? `${pdfModelUsed} + ${finalMediaData.modelUsed}` : finalMediaData.modelUsed,
         mediaType: finalMediaType,
-        originalPdfUrl: pdfDownloadLink,
+        originalPdfUrl: pdfDownloadLink, // Usado para comentar o link
         manualRequired: false,
         metaIndexes: {
-            // Agora topicIndex existe no escopo, então não dará erro
             topic: manualTopic ? 'Manual' : (topicIndex + 1),
             context: contextIndex >= 0 ? contextIndex + 1 : null
         }
