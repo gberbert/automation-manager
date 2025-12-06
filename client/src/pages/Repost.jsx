@@ -10,6 +10,7 @@ export default function Repost() {
 
     // Dados de entrada
     const [incomingText, setIncomingText] = useState('');
+    const [incomingLink, setIncomingLink] = useState('');
     const [selectedImage, setSelectedImage] = useState(null);
 
     // Configurações e Contextos
@@ -27,15 +28,22 @@ export default function Repost() {
         const text = searchParams.get('text') || '';
         const title = searchParams.get('title') || '';
         const url = searchParams.get('url') || '';
-        setIncomingText(text);
+        setIncomingText(text || title); // Prefer text, fallback to title
 
-        // Se a URL for uma imagem, usa ela
-        if (url && (url.match(/\.(jpeg|jpg|gif|png|webp)$/i))) {
-            setSelectedImage(url);
+        // Lógica de URL: Imagem ou Link?
+        if (url) {
+            if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+                setSelectedImage(url);
+            } else {
+                setIncomingLink(url);
+            }
         } else {
-            // Tenta achar imagem no texto
+            // Tenta achar imagem e link no texto
             const imgMatch = text.match(/(https?:\/\/[^\s]+?\.(?:jpeg|jpg|gif|png|webp))/i);
             if (imgMatch) setSelectedImage(imgMatch[0]);
+
+            const linkMatch = text.match(/(https?:\/\/[^\s]+)/i);
+            if (linkMatch && !imgMatch) setIncomingLink(linkMatch[0]); // Só pega se não for a imagem
         }
 
         // 2. Carrega configurações para ter os contextos
@@ -92,8 +100,12 @@ export default function Repost() {
 
                             // 1. Define texto/URL
                             // Prioridade: Selected Text > URL > Title
-                            const fullText = [data.text, data.url].filter(Boolean).join(' ');
+                            const fullText = data.text || '';
                             if (fullText) setIncomingText(fullText);
+
+                            if (data.url && !data.url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+                                setIncomingLink(data.url);
+                            }
 
                             // 2. Define Imagem (Blob para DataURL)
                             if (data.file) {
@@ -134,12 +146,16 @@ export default function Repost() {
         try {
             const getApiUrl = (ep) => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? `http://localhost:3000/api/${ep}` : `/api/${ep}`;
 
+            // Combine text and link for manual topic
+            let topic = incomingText || (selectedImage ? "Análise da Imagem" : "");
+            if (incomingLink) topic += `\nLink: ${incomingLink}`;
+
             const response = await fetch(getApiUrl('generate-content'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     format: 'image',
-                    manualTopic: incomingText || (selectedImage ? "Análise da Imagem" : ""),
+                    manualTopic: topic,
                     manualImage: selectedImage
                 })
             });
@@ -168,6 +184,7 @@ export default function Repost() {
                     type: selectedAction,
                     context: selectedContext,
                     content: incomingText,
+                    link: incomingLink,
                     image: selectedImage
                 })
             });
@@ -267,6 +284,16 @@ export default function Repost() {
                         </div>
                     )}
                     <p className="text-gray-400 text-xs mt-2 line-clamp-3 italic">"{incomingText}"</p>
+                    <div className="mt-2 flex items-center gap-2 bg-gray-900/50 p-2 rounded border border-gray-700">
+                        <span className="text-blue-400 text-xs font-bold whitespace-nowrap">LINK:</span>
+                        <input
+                            type="text"
+                            value={incomingLink}
+                            onChange={(e) => setIncomingLink(e.target.value)}
+                            placeholder="https://..."
+                            className="bg-transparent border-none text-blue-300 text-xs w-full focus:outline-none"
+                        />
+                    </div>
                 </div>
 
                 {/* SELEÇÃO DE AÇÃO */}

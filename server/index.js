@@ -5,7 +5,7 @@ const admin = require('firebase-admin');
 const path = require('path');
 
 // IMPORTS DOS UTILITÁRIOS
-const { generatePost, generateReaction } = require('./utils/gemini');
+const { generatePost, generateReaction, refineText } = require('./utils/gemini');
 const { publishPost, uploadImageOnly, postComment } = require('./utils/linkedin');
 const { generateMedia, uploadToCloudinary, searchUnsplash } = require('./utils/mediaHandler');
 
@@ -297,6 +297,30 @@ app.post('/api/generate-reaction', async (req, res) => {
     } catch (error) {
         console.error("Erro Reaction:", error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// NOVA ROTA: REFINAR TEXTO
+app.post('/api/refine-text', async (req, res) => {
+    try {
+        const { currentContent, instructions } = req.body;
+        const settingsDoc = await db.collection('settings').doc('global').get();
+        const settings = settingsDoc.data();
+
+        // Import refineText dynamically if not already imported or ensure strictly it's available
+        // Note: It is imported at the top in server/index.js via destructuring require('./utils/gemini')
+        // We just need to make sure index.js import line is updated. *Wait, I shouldn't rely on auto-update.* 
+        // I will assume I need to update the import line in index.js as well.
+        // Actually, let's update index.js completely.
+
+        // For now, let's assume the function is imported.
+        const { refineText } = require('./utils/gemini');
+
+        const newText = await refineText(settings, currentContent, instructions);
+        res.json({ success: true, newText });
+    } catch (e) {
+        console.error("Erro Refine:", e);
+        res.status(500).json({ error: e.message });
     }
 });
 

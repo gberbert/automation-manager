@@ -46,6 +46,11 @@ export default function Approved() {
     const [unsplashLoading, setUnsplashLoading] = useState(false);
     const [targetPostId, setTargetPostId] = useState(null);
 
+    // Refinement State
+    const [refineModalOpen, setRefineModalOpen] = useState(false);
+    const [refineInstructions, setRefineInstructions] = useState('');
+    const [isRefining, setIsRefining] = useState(false);
+
     const fileInputRef = useRef(null);
 
     // --- DRAG AND DROP ---
@@ -218,6 +223,49 @@ export default function Approved() {
         };
         reader.readAsDataURL(file);
     };
+
+    const safeContent = (content) => {
+        if (!content) return '';
+        if (typeof content === 'string') return content;
+        if (typeof content === 'object') return content.body || content.text || content.headline || JSON.stringify(content);
+        return String(content);
+    };
+
+    const openRefineModal = (post) => {
+        setTargetPostId(post.id);
+        setRefineInstructions('');
+        setRefineModalOpen(true);
+    };
+
+    const handleRefineText = async () => {
+        if (!targetPostId || !refineInstructions) return;
+        setIsRefining(true);
+        try {
+            const post = posts.find(p => p.id === targetPostId);
+            const currentText = editingPost === targetPostId ? editedContent : safeContent(post.content);
+
+            const res = await fetch(getApiUrl('refine-text'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ currentContent: currentText, instructions: refineInstructions })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setEditingPost(targetPostId);
+                setEditedContent(data.newText);
+                setEditedImageUrl(post.imageUrl || '');
+                setRefineModalOpen(false);
+            } else {
+                setErrorMsg(`Erro: ${data.error}`);
+            }
+        } catch (e) {
+            setErrorMsg("Falha ao refinar texto.");
+        } finally {
+            setIsRefining(false);
+        }
+    };
+
     const handleUnsplashSearch = async (term) => {
         if (!term) return; setUnsplashLoading(true);
         try {
@@ -235,6 +283,10 @@ export default function Approved() {
     const handleReject = async (id) => { if (confirm('Delete permanently?')) { await deleteDoc(doc(db, 'posts', id)); fetchPosts(); } };
     const handleEdit = (p) => { setEditingPost(p.id); setEditedContent(typeof p.content === 'string' ? p.content : JSON.stringify(p.content)); setEditedImageUrl(p.imageUrl || ''); };
     const handleSaveEdit = async (pid) => {
+        if (editedContent.length > 2900) {
+            alert(`O texto excede o limite (2900). Atual: ${editedContent.length}`);
+            return;
+        }
         await updateDoc(doc(db, 'posts', pid), { content: editedContent, imageUrl: editedImageUrl });
         setImageLoadErrors(p => ({ ...p, [pid]: false })); fetchPosts(); setEditingPost(null);
     };
@@ -298,6 +350,35 @@ export default function Approved() {
             <div className="flex justify-between items-center"><h2 className="text-3xl font-bold text-white">Approved Posts</h2><button onClick={fetchPosts} className="flex items-center gap-2 bg-gray-800 px-4 py-2 rounded border border-gray-700 text-blue-400"><Clock className="w-4 h-4" /> Refresh</button></div>
             {errorMsg && <div className="fixed top-20 right-4 bg-red-900 text-white px-6 py-4 rounded border border-red-500 z-50 flex gap-3 items-center"><AlertTriangle className="w-5 h-5" />{errorMsg}<button onClick={() => setErrorMsg(null)}><X className="w-4 h-4" /></button></div>}
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+
+            {/* MODAL REFINEMENT */}
+            {refineModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl flex flex-col">
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/50 rounded-t-xl">
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2"><Wand2 className="w-5 h-5 text-purple-400" /> Refine with AI</h3>
+                            <button onClick={() => setRefineModalOpen(false)} className="text-gray-400 hover:text-white"><X className="w-6 h-6" /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-300">Descreva como você quer melhorar este texto (ex: "Mais formal", "Adicione emojis", "Inclua um comentário sobre IA").</p>
+                            <textarea
+                                value={refineInstructions}
+                                onChange={(e) => setRefineInstructions(e.target.value)}
+                                className="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-white focus:border-purple-500 outline-none min-h-[100px]"
+                                placeholder="Instruções para a IA..."
+                            />
+                        </div>
+                        <div className="p-4 border-t border-gray-700 bg-gray-800/30 rounded-b-xl flex justify-end gap-3">
+                            <button onClick={() => setRefineModalOpen(false)} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">Cancelar</button>
+                            <button onClick={handleRefineText} disabled={isRefining || !refineInstructions.trim()} className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2">
+                                {isRefining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                                {isRefining ? 'Gerando...' : 'Gerar Novo Texto'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {unsplashModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur">
                     <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-3xl h-[80vh] flex flex-col shadow-2xl">
@@ -340,9 +421,16 @@ export default function Approved() {
                                                         </div>
 
                                                     </div>
-                                                    <div className="flex items-center text-gray-500 text-xs space-x-1 mb-3">
-                                                        <Calendar className="w-3 h-3" />
-                                                        <span>{post.createdAt?.toDate ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Just now'}</span>
+                                                    <div className="flex items-center text-gray-500 text-xs space-x-3 mb-3">
+                                                        <div className="flex items-center gap-1">
+                                                            <Calendar className="w-3 h-3" />
+                                                            <span>{post.createdAt?.toDate ? new Date(post.createdAt.toDate()).toLocaleDateString() : 'Just now'}</span>
+                                                        </div>
+                                                        <div className={`flex items-center gap-1 font-mono ${safeContent(post.content).length > 2900 ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
+                                                            <FileText className="w-3 h-3" />
+                                                            <span>{safeContent(post.content).length}/2900 chars</span>
+                                                            {safeContent(post.content).length > 2900 && <AlertTriangle className="w-3 h-3" />}
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <button className="flex-shrink-0 text-gray-400 hover:text-white transition-colors">
@@ -357,18 +445,23 @@ export default function Approved() {
                                                     {editingPost === post.id ? (
                                                         <div className="space-y-3">
                                                             <textarea value={editedContent} onChange={e => setEditedContent(e.target.value)} className="w-full bg-gray-900 border-gray-700 rounded p-3 text-white min-h-[150px]" />
+                                                            <div className={`text-right text-xs mt-1 font-mono ${editedContent.length > 2900 ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
+                                                                {editedContent.length}/2900 chars {editedContent.length > 2900 && "(LIMIT EXCEEDED)"}
+                                                            </div>
                                                             <div className="flex gap-2"><input type="text" value={editedImageUrl} onChange={e => setEditedImageUrl(e.target.value)} className="flex-1 bg-gray-900 border-gray-700 rounded p-2 text-white text-xs" /><button onClick={() => handleSaveEdit(post.id)} className="bg-blue-600 px-4 rounded text-white flex gap-2 items-center"><Save className="w-4 h-4" /> Save</button></div>
                                                         </div>
                                                     ) : <p className="text-gray-300 whitespace-pre-wrap">{typeof post.content === 'string' ? post.content : JSON.stringify(post.content)}</p>}
-                                                    <div className="flex gap-3 pt-4 border-t border-gray-700">
+                                                    <div className="flex flex-col md:flex-row gap-4 pt-4 border-t border-gray-700">
                                                         {!editingPost && !publishingId && (
-                                                            <>
+                                                            <div className="flex gap-2 w-full md:w-auto">
+                                                                <button onClick={(e) => { e.stopPropagation(); openRefineModal(post); }} className="flex-1 bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 py-2 rounded flex justify-center gap-2">
+                                                                    <Wand2 className="w-4 h-4" /> Refine
+                                                                </button>
                                                                 <button onClick={(e) => { e.stopPropagation(); handleEdit(post) }} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded flex justify-center gap-2"><Edit2 className="w-4 h-4" /> Edit</button>
-                                                                {/* REMOVIDO RE-APPROVE DAQUI */}
                                                                 <button onClick={(e) => { e.stopPropagation(); handleReject(post.id) }} className="flex-1 bg-red-600/20 text-red-400 hover:bg-red-600/40 py-2 rounded flex justify-center gap-2"><Trash2 className="w-4 h-4" /> Delete</button>
-                                                            </>
+                                                            </div>
                                                         )}
-                                                        <button onClick={(e) => { e.stopPropagation(); handlePublishNow(post) }} disabled={publishingId === post.id} className="w-full md:w-auto ml-auto bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white px-6 py-2 rounded flex items-center justify-center gap-2">
+                                                        <button onClick={(e) => { e.stopPropagation(); handlePublishNow(post) }} disabled={publishingId === post.id} className="w-full md:w-auto md:ml-auto bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white px-6 py-2 rounded flex items-center justify-center gap-2">
                                                             {publishingId === post.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                                             <span>{publishingId === post.id ? publishStep : 'Publish Now'}</span>
                                                         </button>

@@ -253,4 +253,38 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
     };
 }
 
-module.exports = { generatePost, generateReaction };
+
+// --- REFINAR TEXTO (NOVO) ---
+async function refineText(settings, currentContent, instructions) {
+    if (!settings.geminiApiKey) throw new Error("Gemini Key Missing");
+
+    const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
+    const model = genAI.getGenerativeModel({ model: settings.geminiModel || "gemini-2.5-flash" });
+
+    const prompt = `
+    ROLE: Professional Social Media Editor.
+    TASK: Rewrite/Refine the following post content based SPECIFICALLY on the user's instructions.
+    
+    ORIGINAL CONTENT:
+    "${currentContent}"
+
+    USER INSTRUCTIONS:
+    "${instructions}"
+
+    CONSTRAINTS:
+    - Keep the same tone unless instructed otherwise.
+    - Maintain the original meaning but apply the requested changes.
+    - Output ONLY the new text. No intro/outro.
+    - Language: ${settings.language === 'pt-BR' ? "Portuguese (Brazil)" : "English"}
+    `;
+
+    const result = await model.generateContent(prompt);
+    let refinements = result.response.text().trim();
+
+    // Cleanup if accidentally wraps in markdown
+    refinements = forceCleanText(refinements);
+
+    return refinements;
+}
+
+module.exports = { generatePost, generateReaction, refineText };
