@@ -188,18 +188,33 @@ async function runScheduler() {
                 if (canPub) {
                     console.log(`🚀 DISPARANDO PUBLICAÇÃO (Slot ${slot.id})...`);
 
+                    // BUSCA TODOS OS APROVADOS E ORDENA EM MEMÓRIA (Evita index errors)
                     const q = await db.collection('posts')
                         .where('status', '==', 'approved')
-                        .orderBy('createdAt', 'asc')
-                        .limit(slot.count)
                         .get();
 
                     if (q.empty) {
                         console.log("📭 Fila de aprovação vazia. Nada para publicar.");
                     } else {
+                        let allApproved = q.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() }));
+
+                        // ORDENAÇÃO: 1. publicationOrder (asc), 2. createdAt (asc - mais antigo primeiro)
+                        allApproved.sort((a, b) => {
+                            const orderA = a.data.publicationOrder ?? 999999;
+                            const orderB = b.data.publicationOrder ?? 999999;
+                            if (orderA !== orderB) return orderA - orderB;
+                            return (a.data.createdAt?.toMillis() || 0) - (b.data.createdAt?.toMillis() || 0);
+                        });
+
+                        // PEGA OS TOP N
+                        const postsToPublish = allApproved.slice(0, slot.count);
+
                         // --- MUDANÇA CRÍTICA: AWAIT AQUI TAMBÉM ---
-                        for (const doc of q.docs) {
-                            const postData = doc.data();
+                        for (const item of postsToPublish) {
+                            const postData = item.data;
+                            const docRef = item.ref;
+                            const docId = item.id;
+                            console.log(`📤 Publicando: ${postData.topic}`);
                             console.log(`📤 Publicando: ${postData.topic}`);
 
                             let assetUrn = null;
@@ -217,7 +232,7 @@ async function runScheduler() {
                                 if (postData.originalPdfUrl) {
                                     await postComment(result.id, `📄 Leia o estudo completo aqui: ${postData.originalPdfUrl}`, settings);
                                 }
-                                await db.collection('posts').doc(doc.id).update({
+                                await docRef.update({
                                     status: 'published',
                                     publishedAt: admin.firestore.FieldValue.serverTimestamp(),
                                     linkedinPostId: result.id
@@ -305,6 +320,23 @@ app.post('/api/upload-media', async (req, res) => {
         res.json({ success: true, assetUrn });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+app.post('/api/reorder-posts', async (req, res) => {
+    try {
+        const { orderedIds } = req.body;
+        if (!orderedIds || !Array.isArray(orderedIds)) return res.status(400).json({ error: "Invalid data" });
+
+        const batch = db.batch();
+        orderedIds.forEach((id, index) => {
+            if (!id) return;
+            const ref = db.collection('posts').doc(id);
+            batch.update(ref, { publicationOrder: index });
+        });
+
+        await batch.commit();
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/publish-now/:id', async (req, res) => {
     try {
         const postId = req.params.id;
