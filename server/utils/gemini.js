@@ -27,6 +27,31 @@ function robustParse(text) {
     }
 }
 
+const axios = require('axios'); // Ensure axios is required
+
+// --- HELPER: BUSCAR CONTEÚDO DO LINK ---
+async function fetchLinkContent(url) {
+    try {
+        console.log(`🌍 Scraping link: ${url}`);
+        const response = await axios.get(url, {
+            timeout: 10000,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
+        });
+
+        let html = response.data;
+        // Simple cleanup: remove scripts, styles, tags
+        html = html.replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, "");
+        html = html.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, "");
+        html = html.replace(/<[^>]+>/g, ' ');
+        html = html.replace(/\s+/g, ' ').trim();
+
+        return html.substring(0, 3000); // Limit to ~3000 chars for context 
+    } catch (e) {
+        console.warn(`⚠️ Erro ao acessar link ${url}: ${e.message}`);
+        return null;
+    }
+}
+
 // --- FUNÇÃO PARA MARCAR TÓPICO COM ERRO NO BANCO ---
 async function markTopicAsFailed(topic) {
     try {
@@ -133,14 +158,19 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
         randomContext = typeof ctxItem === 'object' ? ctxItem.text : ctxItem;
     }
 
-    // --- 3. BUSCA DE MÍDIA (PDF) ---
+    // --- 3. BUSCA DE MÍDIA (PDF) E LINK SCAN ---
     const pdfDateFilter = settings.strategyPdf?.dateFilter || '2024';
     let pdfContentBase64 = null; let pdfDownloadLink = ""; let pdfModelUsed = ""; let extraContext = "";
 
-    // Se tiver manualLink, ele vira o "recurso externo" (similar ao PDF)
+    // Se tiver manualLink, busca o conteúdo
     if (manualLink) {
         pdfDownloadLink = manualLink;
-        extraContext = `FONTE EXTERNA: O conteúdo deve ser baseado neste link: "${manualLink}".`;
+        const scrapedText = await fetchLinkContent(manualLink);
+        if (scrapedText) {
+            extraContext = `FONTE EXTERNA OBRIGATÓRIA: O texto do post DEVEM ser baseado EXCLUSIVAMENTE no seguinte conteúdo extraído do link: "${scrapedText}".`;
+        } else {
+            extraContext = `FONTE EXTERNA: O conteúdo deve ser baseado no link: "${manualLink}". (Não foi possível ler o conteúdo automaticamente, use seu conhecimento geral sobre o link se possível).`;
+        }
     }
     // Se não tiver link manual, e for modo PDF, busca PDF
     else if (isPdfMode) {
@@ -148,11 +178,7 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
             console.log("🧠 Simplificando tópico para busca...");
             const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
             const m = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-            const searchPrompt = `
-            ROLE: Search Query Optimizer API.
-            TASK: Convert the topic "${randomTopic}" into a single line of 3-5 efficient search keywords for an academic database.
-            CONSTRAINTS: Output ONLY the keywords separated by spaces. NO intro. NO bullets. NO new lines.
-            `;
+            const searchPrompt = `ROLE: Search Query Optimizer API. TASK: Convert the topic "${randomTopic}" into a single line of 3-5 efficient search keywords for an academic database. CONSTRAINTS: Output ONLY the keywords separated by spaces. NO intro. NO bullets. NO new lines.`;
             const t = await m.generateContent(searchPrompt);
             const simplifiedQuery = t.response.text().replace(/[\r\n]+/g, " ").trim().substring(0, 100);
 
