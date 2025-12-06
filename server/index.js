@@ -6,7 +6,7 @@ const path = require('path');
 
 // IMPORTS DOS UTILITÁRIOS
 const { generatePost, generateReaction } = require('./utils/gemini');
-const { publishPost, uploadImageOnly } = require('./utils/linkedin');
+const { publishPost, uploadImageOnly, postComment } = require('./utils/linkedin');
 const { generateMedia, uploadToCloudinary, searchUnsplash } = require('./utils/mediaHandler');
 
 require('dotenv').config();
@@ -214,6 +214,9 @@ async function runScheduler() {
 
                             const result = await publishPost(postData, settings, assetUrn);
                             if (result.success) {
+                                if (postData.originalPdfUrl) {
+                                    await postComment(result.id, `📄 Leia o estudo completo aqui: ${postData.originalPdfUrl}`, settings);
+                                }
                                 await db.collection('posts').doc(doc.id).update({
                                     status: 'published',
                                     publishedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -310,6 +313,9 @@ app.post('/api/publish-now/:id', async (req, res) => {
         const settingsDoc = await db.collection('settings').doc('global').get();
         const result = await publishPost(postDoc.data(), settingsDoc.data(), mediaAsset);
         if (result.success) {
+            if (postDoc.data().originalPdfUrl) {
+                await postComment(result.id, `📄 Leia o estudo completo aqui: ${postDoc.data().originalPdfUrl}`, settingsDoc.data());
+            }
             await db.collection('posts').doc(postId).update({ status: 'published', publishedAt: admin.firestore.FieldValue.serverTimestamp(), linkedinPostId: result.id });
             res.json({ success: true });
         } else { res.status(500).json({ error: result.error }); }

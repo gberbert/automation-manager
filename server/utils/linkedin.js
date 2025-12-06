@@ -8,8 +8,8 @@ async function getAutoDetectedId(accessToken) {
             timeout: 10000
         });
         if (response.data && response.data.sub) return `urn:li:person:${response.data.sub}`;
-    } catch (error) { 
-        console.warn("Falha auto-id LinkedIn:", error.message); 
+    } catch (error) {
+        console.warn("Falha auto-id LinkedIn:", error.message);
     }
     return null;
 }
@@ -25,23 +25,23 @@ async function registerImageUpload(authorUrn, accessToken) {
             "owner": authorUrn,
             "serviceRelationships": [{ "relationshipType": "OWNER", "identifier": "urn:li:userGeneratedContent" }]
         }
-    }, { 
+    }, {
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        timeout: 15000 
+        timeout: 15000
     });
 
-    return { 
-        uploadUrl: response.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl, 
-        asset: response.data.value.asset 
+    return {
+        uploadUrl: response.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl,
+        asset: response.data.value.asset
     };
 }
 
 // --- PASSO 2: UPLOAD DO BINÁRIO DA IMAGEM ---
 async function uploadImageBinary(buffer, uploadUrl, accessToken) {
     console.log(`⬆️ Subindo bytes da imagem...`);
-    await axios.put(uploadUrl, buffer, { 
-        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'image/jpeg' }, 
-        timeout: 60000 
+    await axios.put(uploadUrl, buffer, {
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'image/jpeg' },
+        timeout: 60000
     });
     console.log("✅ Imagem enviada.");
 }
@@ -63,8 +63,8 @@ async function uploadImageOnly(fileUrl, settings) {
 
     // 3. Subir
     await uploadImageBinary(buffer, uploadUrl, settings.linkedinAccessToken);
-    
-    return asset; 
+
+    return asset;
 }
 
 // --- PASSO 3: PUBLICAR ---
@@ -119,4 +119,39 @@ async function publishPost(post, settings, preUploadedAsset = null) {
     }
 }
 
-module.exports = { publishPost, uploadImageOnly };
+// --- PASSO 4: COMENTAR NO POST (LINK DO PDF) ---
+async function postComment(shareUrn, text, settings) {
+    if (!settings.linkedinAccessToken) return;
+
+    try {
+        let actorUrn = settings.linkedinUrn || await getAutoDetectedId(settings.linkedinAccessToken);
+        console.log(`💬 Postando comentário no post ${shareUrn}...`);
+
+        const body = {
+            "actor": actorUrn,
+            "object": shareUrn,
+            "message": {
+                "text": text
+            }
+        };
+
+        // O URN do post precisa ser codificado se for passado na URL, mas aqui é socialActions/{urn}/comments
+        // Testes indicam que não precisa de encodeURIComponent completo se for URN padrão, mas vamos garantir
+        // Na verdade, a doc diz /socialActions/{shareUrn}/comments
+
+        await axios.post(`https://api.linkedin.com/v2/socialActions/${shareUrn}/comments`, body, {
+            headers: {
+                'Authorization': `Bearer ${settings.linkedinAccessToken}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 30000
+        });
+
+        console.log("✅ Comentário publicado com sucesso.");
+    } catch (error) {
+        console.error("⚠️ Falha ao comentar no post:", error.response?.data?.message || error.message);
+        // Não lançamos erro para não falhar o fluxo principal de publicação
+    }
+}
+
+module.exports = { publishPost, uploadImageOnly, postComment };

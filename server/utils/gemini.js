@@ -190,7 +190,9 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
     CONTEXTO: "${randomContext}"
     IDIOMA: ${settings.language === 'pt-BR' ? "Portuguese (Brazil)" : "English"}
     OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "..." }
-    RULES: No markdown blocks. NO PLACEHOLDERS LIKE [Link]. Finish with a call to action to read the attachment.
+    RULES: No markdown blocks. NO PLACEHOLDERS LIKE [Link].
+    NEGATIVE CONSTRAINT: Do NOT include the download link in the final text. Just mention that the link will be in the first comment.
+    Finish with a call to action (e.g. "Link in comments").
     `;
 
     let postContent = { content: "", imagePrompt: "" };
@@ -205,7 +207,14 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
         const result = await textModel.generateContent(parts);
         const parsed = robustParse(result.response.text());
         postContent.content = forceCleanText(parsed.content);
-        if (pdfDownloadLink && !postContent.content.includes(pdfDownloadLink)) postContent.content += `\n\n📄 Leia o estudo completo: ${pdfDownloadLink}`;
+        if (pdfDownloadLink && !postContent.content.includes(pdfDownloadLink)) {
+            // Link logic moved to comments. Keeping this block empty or just adding a hint if needed, 
+            // but per instructions we should NOT add the link to body.
+            // We can ensure the text mentions the comment.
+            if (!postContent.content.toLowerCase().includes('comentário') && !postContent.content.toLowerCase().includes('comments')) {
+                postContent.content += `\n\n(Link disponível no primeiro comentário)`;
+            }
+        }
         postContent.imagePrompt = parsed.imagePrompt || `Professional photo about ${randomTopic}`;
     } catch (e) {
         if (logFn) await logFn('error', 'Erro Texto Gemini', e.message);
