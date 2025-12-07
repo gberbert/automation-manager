@@ -154,4 +154,68 @@ async function postComment(shareUrn, text, settings) {
     }
 }
 
-module.exports = { publishPost, uploadImageOnly, postComment };
+// --- PASSO 5: BUSCAR COMENTÁRIOS ---
+async function fetchComments(shareUrn, settings) {
+    if (!settings.linkedinAccessToken) return { success: false, error: "Token ausente" };
+
+    try {
+        console.log(`🔎 Buscando comentários para ${shareUrn}...`);
+        // Endpoint: /socialActions/{urn}/comments
+        // Nota: URNs devem ser encoded se passados como parametro de URL, mas aqui é parte do path.
+        // O LinkedIn recomenda passar URN direto no path.
+
+        const response = await axios.get(`https://api.linkedin.com/v2/socialActions/${shareUrn}/comments?count=50`, {
+            headers: { 'Authorization': `Bearer ${settings.linkedinAccessToken}` },
+            timeout: 10000
+        });
+
+        const updatedComments = response.data.elements.map(c => ({
+            id: c.$URN, // URN do comentário
+            authorUrn: c.actor, // Quem comentou
+            text: c.message.text,
+            createdAt: c.created.time,
+            objectUrn: c.object, // O post
+            comments: c.commentsSummary?.totalFirstLevelComments || 0
+        }));
+
+        return { success: true, comments: updatedComments };
+
+    } catch (error) {
+        // Se der 404, pode ser que o post não exista mais ou não tenha social actions habilitadas
+        console.warn(`⚠️ Erro ao buscar comentários (${shareUrn}):`, error.response?.status);
+        return { success: false, error: error.message };
+    }
+}
+
+// --- PASSO 6: RESPONDER A UM COMENTÁRIO (REPLY) ---
+async function replyToComment(postUrn, parentCommentUrn, text, settings) {
+    if (!settings.linkedinAccessToken) return { success: false, error: "Token ausente" };
+
+    try {
+        let actorUrn = settings.linkedinUrn || await getAutoDetectedId(settings.linkedinAccessToken);
+        console.log(`💬 Respondendo comentário ${parentCommentUrn} no post ${postUrn}...`);
+
+        const body = {
+            "actor": actorUrn,
+            "object": postUrn, // O objeto pai continua sendo o POST
+            "parentComment": parentCommentUrn, // AQUI definimos que é uma resposta
+            "message": { "text": text }
+        };
+
+        const response = await axios.post(`https://api.linkedin.com/v2/socialActions/${postUrn}/comments`, body, {
+            headers: {
+                'Authorization': `Bearer ${settings.linkedinAccessToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        console.log("✅ Resposta publicada. ID:", response.data.id);
+        return { success: true, id: response.data.id };
+
+    } catch (error) {
+        console.error("❌ Erro ao responder comentário:", error.response?.data || error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+module.exports = { publishPost, uploadImageOnly, postComment, fetchComments, replyToComment };

@@ -6,7 +6,7 @@ const path = require('path');
 
 // IMPORTS DOS UTILITÁRIOS
 const { generatePost, generateReaction, refineText } = require('./utils/gemini');
-const { publishPost, uploadImageOnly, postComment } = require('./utils/linkedin');
+const { publishPost, uploadImageOnly, postComment, fetchComments, replyToComment } = require('./utils/linkedin');
 const { generateMedia, uploadToCloudinary, searchUnsplash } = require('./utils/mediaHandler');
 
 require('dotenv').config();
@@ -250,6 +250,69 @@ async function runScheduler() {
         console.log("⏸️ Scheduler de Publicação está DESATIVADO nas configurações.");
     }
 
+    // --- 3. MONITORAMENTO DE ENGAJAMENTO (NOVO) ---
+    const engagement = settings.scheduler?.engagement;
+    if (engagement && engagement.enabled) {
+        const isTime = isTimeInWindow(engagement.time, currentHM);
+        console.log(`🔎 Check Engajamento: Agendado ${engagement.time} vs Atual ${currentHM} -> ${isTime ? '✅ HORA!' : '❌ Aguardando'}`);
+
+        if (isTime) {
+            const canRun = await checkAndSetLock('engagement_monitor', engagement.time);
+            if (canRun) {
+                console.log(`🚀 DISPARANDO MONITORAMENTO DE ENGAJAMENTO...`);
+                // Chama a função de sync internamente
+                const limitPosts = engagement.monitorCount || 20;
+                logSystem('info', `Iniciando varredura de comentários`, `Posts: ${limitPosts}`);
+
+                try {
+                    // Logic duplicated from /api/sync-comments to ensure standalone run
+                    const postsSnap = await db.collection('posts')
+                        .where('status', '==', 'published')
+                        .orderBy('publishedAt', 'desc')
+                        .limit(limitPosts)
+                        .get();
+
+                    let totalNew = 0;
+                    for (const doc of postsSnap.docs) {
+                        const p = doc.data();
+                        if (!p.linkedinPostId) continue;
+
+                        // ID no banco pode ser só numérico ou URN completa. fetchComments espera URN ou ID.
+                        // O linkedin.js lida com ID numérico? O endpoint precisa de URN: urn:li:share:ID ou urn:li:ugcPost:ID
+                        // O nosso "linkedinPostId" salvo geralmente é urn:li:share:123... se veio do result.id
+                        // Vamos garantir.
+                        const res = await fetchComments(p.linkedinPostId, settings);
+
+                        if (res.success && res.comments) {
+                            for (const c of res.comments) {
+                                // Verifica duplicidade
+                                const cRef = db.collection('comments').doc(c.id); // c.id é URN
+                                const cDoc = await cRef.get();
+                                if (!cDoc.exists) {
+                                    await cRef.set({
+                                        ...c,
+                                        postDbId: doc.id,
+                                        postTopic: p.topic,
+                                        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                                        read: false,
+                                        replied: false
+                                    });
+                                    totalNew++;
+                                }
+                            }
+                        }
+                    }
+                    logSystem('success', `Monitoramento Finalizado`, `Novos Comentários: ${totalNew}`);
+                } catch (err) {
+                    console.error("Erro no Monitoramento:", err);
+                    logSystem('error', `Falha Monitoramento`, err.message);
+                }
+            }
+        }
+    } else {
+        console.log("⏸️ Scheduler de Engajamento está DESATIVADO.");
+    }
+
     console.log("🏁 Verificação concluída.\n");
 }
 
@@ -323,6 +386,93 @@ app.post('/api/refine-text', async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+
+// --- ROTAS DE ENGAJAMENTO (NOVO) ---
+app.post('/api/sync-comments', async (req, res) => {
+    try {
+        const settingsDoc = await db.collection('settings').doc('global').get();
+        const settings = settingsDoc.data();
+
+        const limitPosts = settings.scheduler?.engagement?.monitorCount || 20;
+        console.log(`📥 Sync Manual: Buscando comentários dos últimos ${limitPosts} posts...`);
+
+        const postsSnap = await db.collection('posts')
+            .where('status', '==', 'published')
+            .orderBy('publishedAt', 'desc')
+            .limit(limitPosts)
+            .get();
+
+        let totalNew = 0;
+        for (const doc of postsSnap.docs) {
+            const p = doc.data();
+            if (!p.linkedinPostId) continue;
+
+            const r = await fetchComments(p.linkedinPostId, settings);
+            if (r.success && r.comments) {
+                for (const c of r.comments) {
+                    const cRef = db.collection('comments').doc(c.id);
+                    const cDoc = await cRef.get();
+                    if (!cDoc.exists) {
+                        await cRef.set({
+                            ...c,
+                            postDbId: doc.id,
+                            postTopic: p.topic,
+                            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+                            read: false,
+                            replied: false
+                        });
+                        totalNew++;
+                    }
+                }
+            }
+        }
+        res.json({ success: true, newComments: totalNew });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/comments', async (req, res) => {
+    try {
+        const snapshot = await db.collection('comments')
+            .orderBy('createdAt', 'desc')
+            .limit(100)
+            .get();
+
+        const comments = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        res.json({ success: true, comments });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/reply-comment', async (req, res) => {
+    try {
+        const { commentId, postUrn, text } = req.body; // commentId is the URN of the comment we are replying to
+        const settingsDoc = await db.collection('settings').doc('global').get();
+
+        const result = await replyToComment(postUrn, commentId, text, settingsDoc.data());
+
+        if (result.success) {
+            // Marca como respondido no banco local
+            await db.collection('comments').doc(commentId).update({
+                replied: true,
+                replyId: result.id,
+                read: true
+            });
+            res.json({ success: true, id: result.id });
+        } else {
+            res.status(500).json({ error: result.error });
+        }
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/mark-read/:id', async (req, res) => {
+    try {
+        await db.collection('comments').doc(req.params.id).update({ read: true });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // Outras rotas...
 app.post('/api/manual-upload', async (req, res) => {

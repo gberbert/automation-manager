@@ -23,6 +23,7 @@ export default function Layout() {
         { type: 'divider' },
 
         { path: '/linkedin', icon: Linkedin, label: 'LinkedIn', group: 'social' },
+        { path: '/engagement', icon: CheckSquare, label: 'Engagement Hub', group: 'social' },
         { path: '/instagram', icon: Instagram, label: 'Instagram', group: 'social' },
 
         { type: 'divider' },
@@ -66,7 +67,7 @@ export default function Layout() {
                         AutoManager
                     </h1>
                 </div>
-                
+
                 <nav className="flex-1 p-4 space-y-1 mt-16 md:mt-0 overflow-y-auto">
                     {navItems.map((item, index) => {
                         if (item.type === 'divider') {

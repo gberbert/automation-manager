@@ -10,7 +10,8 @@ import Approved from './pages/Approved';
 import Published from './pages/Published';
 import Linkedin from './pages/Linkedin';
 import Instagram from './pages/Instagram';
-import Repost from './pages/Repost'; // <--- VERIFIQUE ESTE IMPORT
+import Repost from './pages/Repost';
+import Engagement from './pages/Engagement';
 import Layout from './components/Layout';
 
 function App() {
@@ -31,7 +32,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-        
+
         {/* Rotas Protegidas (Dentro do Layout) */}
         <Route path="/" element={user ? <Layout /> : <Navigate to="/login" />}>
           <Route index element={<Dashboard />} />
@@ -41,9 +42,10 @@ function App() {
           <Route path="linkedin" element={<Linkedin />} />
           <Route path="instagram" element={<Instagram />} />
           <Route path="settings" element={<Settings />} />
-          
+
           {/* AQUI ESTÁ A ROTA QUE FALTAVA */}
           <Route path="repost" element={<Repost />} />
+          <Route path="engagement" element={<Engagement />} />
         </Route>
       </Routes>
     </Router>
