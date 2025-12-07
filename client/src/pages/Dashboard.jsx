@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BarChart3, Clock, CheckCircle, AlertCircle, Sparkles, Linkedin, Instagram, FileText, Image as ImageIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
+    const navigate = useNavigate();
     const [stats, setStats] = useState({
         total: 0, pending: 0, approved: 0, published: 0,
         linkedin: { total: 0, pending: 0, approved: 0, published: 0 },
@@ -23,7 +25,7 @@ export default function Dashboard() {
         const approved = data.filter(p => p.status === 'approved').length;
         const published = data.filter(p => p.status === 'published').length;
         const linkedinPosts = data.filter(p => !p.platform || p.platform === 'linkedin');
-        
+
         setStats({
             total, pending, approved, published,
             linkedin: {
@@ -51,12 +53,12 @@ export default function Dashboard() {
             };
 
             const apiUrl = getApiUrl('/api/generate-content');
-            
+
             // Envia o formato desejado no body
             const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ format: format }) 
+                body: JSON.stringify({ format: format })
             });
 
             // Verifica se a resposta é JSON antes de parsear
@@ -87,8 +89,11 @@ export default function Dashboard() {
         }
     };
 
-    const StatCard = ({ title, value, icon: IconComponent, color, subColor }) => (
-        <div className="bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 flex items-center space-x-4">
+    const StatCard = ({ title, value, icon: IconComponent, color, subColor, onClick }) => (
+        <div
+            onClick={onClick}
+            className={`bg-gray-800/50 backdrop-blur p-6 rounded-xl border border-gray-700 flex items-center space-x-4 ${onClick ? 'cursor-pointer hover:bg-gray-800 transition-colors' : ''}`}
+        >
             <div className={`p-3 rounded-lg ${subColor}`}><IconComponent className={`w-6 h-6 ${color}`} /></div>
             <div><p className="text-gray-400 text-sm">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div>
         </div>
@@ -98,10 +103,10 @@ export default function Dashboard() {
         <div className="space-y-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="text-3xl font-bold text-white">Dashboard</h2>
-                
+
                 {/* BOTÕES DE GERAÇÃO DUPLOS */}
                 <div className="flex gap-3 w-full md:w-auto">
-                    
+
                     {/* BOTÃO IMAGEM */}
                     <button
                         onClick={() => handleGenerateNow('image')}
@@ -128,10 +133,37 @@ export default function Dashboard() {
             {message && <div className={`p-4 rounded-lg ${message.includes('✅') ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>{message}</div>}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="Total Posts" value={stats.total} icon={BarChart3} color="text-blue-400" subColor="bg-blue-400/10" />
-                <StatCard title="Pending Approval" value={stats.pending} icon={AlertCircle} color="text-yellow-400" subColor="bg-yellow-400/10" />
-                <StatCard title="Ready to Publish" value={stats.approved} icon={Clock} color="text-purple-400" subColor="bg-purple-400/10" />
-                <StatCard title="Published" value={stats.published} icon={CheckCircle} color="text-green-400" subColor="bg-green-400/10" />
+                <StatCard
+                    title="Total Posts"
+                    value={stats.total}
+                    icon={BarChart3}
+                    color="text-blue-400"
+                    subColor="bg-blue-400/10"
+                />
+                <StatCard
+                    title="Pending Approval"
+                    value={stats.pending}
+                    icon={AlertCircle}
+                    color="text-yellow-400"
+                    subColor="bg-yellow-400/10"
+                    onClick={() => navigate('/approvals')}
+                />
+                <StatCard
+                    title="Ready to Publish"
+                    value={stats.approved}
+                    icon={Clock}
+                    color="text-purple-400"
+                    subColor="bg-purple-400/10"
+                    onClick={() => navigate('/approved')}
+                />
+                <StatCard
+                    title="Published"
+                    value={stats.published}
+                    icon={CheckCircle}
+                    color="text-green-400"
+                    subColor="bg-green-400/10"
+                    onClick={() => navigate('/published')}
+                />
             </div>
 
             <div className="bg-gray-800/50 backdrop-blur p-8 rounded-xl border border-gray-700 text-center">

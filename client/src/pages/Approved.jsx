@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Clock, Calendar, ChevronDown, ChevronUp, Send, Loader2, Edit2, Trash2, Save, ImageOff, X, AlertCircle, FileText, Download, ExternalLink, AlertTriangle, Camera, RefreshCw, Upload, Check, Search, Image as ImageIcon, Wand2, GripVertical } from 'lucide-react';
+import { Clock, Calendar, ChevronDown, ChevronUp, Send, Loader2, Edit2, Trash2, Save, ImageOff, X, AlertCircle, FileText, Download, ExternalLink, AlertTriangle, Camera, RefreshCw, Upload, Check, Search, Image as ImageIcon, Wand2, GripVertical, Rocket, ListOrdered } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -453,7 +453,7 @@ export default function Approved() {
                 <div className="space-y-4">
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                         <SortableContext items={posts.map(p => p.id)} strategy={verticalListSortingStrategy}>
-                            {posts.map((post) => {
+                            {posts.map((post, index) => {
                                 const isExpanded = expandedPost === post.id;
                                 const isEditing = editingPost === post.id;
                                 const currentImageUrl = isEditing ? editedImageUrl : post.imageUrl;
@@ -465,6 +465,15 @@ export default function Approved() {
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-3 mb-2 flex-wrap">
+                                                        {/* BADGE DE ORDEM */}
+                                                        <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1 ${index === 0
+                                                                ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
+                                                                : 'bg-gray-700 text-gray-300 border-gray-600'
+                                                            }`}>
+                                                            {index === 0 ? <Rocket className="w-3 h-3" /> : <ListOrdered className="w-3 h-3" />}
+                                                            {index === 0 ? "PRÓXIMO POST (#1)" : `FILA #${index + 1}`}
+                                                        </div>
+
                                                         <h3 className="text-lg font-semibold text-white truncate">{post.topic}</h3>
                                                         <div className="px-3 py-1 rounded-full text-xs font-medium border bg-green-500/20 text-green-400 border-green-500/30">APPROVED</div>
 
