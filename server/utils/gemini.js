@@ -215,7 +215,7 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
     ${manualImage ? 'NOTA: Uma imagem foi fornecida manualmente. Use-a como base principal para o texto.' : ''}
     CONTEXTO: "${randomContext}"
     IDIOMA: ${settings.language === 'pt-BR' ? "Portuguese (Brazil)" : "English"}
-    OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "A detailed DALL-E 3 style description of an image that perfectly illustrates the text above. NOT generic. Visual details, lighting, style." }
+    OUTPUT FORMAT (JSON): { "content": "...", "imagePrompt": "Create a DALL-E 3 image prompt that VISUALLY SUMMARIZES the content you just wrote. Ignore generic styles. The image must represent the core message of the text." }
     RULES: 
     - No markdown blocks. 
     - NO PLACEHOLDERS LIKE [Link].
@@ -257,30 +257,14 @@ async function generatePost(settings, logFn = null, manualTopic = null, manualIm
         }
 
         // --- 4.2 IMAGE PROMPT LOGIC ---
-        if (parsed.imagePrompt && parsed.imagePrompt.length > 20) {
+        // STRICT: Use the AI provided prompt if available. Only fallback if absolutely empty.
+        if (parsed.imagePrompt && parsed.imagePrompt.length > 10) {
             postContent.imagePrompt = parsed.imagePrompt;
         } else {
-            // Fallback strong prompt if not provided by model
-            postContent.imagePrompt = `Editorial style photography for social media, featuring ${randomTopic}. Professional lighting, 8k resolution, cinematic composition.`;
+            postContent.imagePrompt = `A high quality, professional image representing the concept of: ${randomTopic}. 8k resolution.`;
         }
 
-        // --- PROMPT INJECTION FOR BETTER IMAGES ---
-        const enhancedImagePrompt = `
-        Create a HIGHLY VISUAL, AWARD-WINNING PHOTOGRAPHY prompt based on this text: "${postContent.content.substring(0, 300)}...".
-        The image should NOT contain text. It should be metaphorical or directly illustrative of the subject "${randomTopic}".
-        Style: Commercial Photography, 8k, Ultra-Detailed.
-        `;
-
-        // Wait... I can't call Gemini again just for the prompt easily here without increasing latency.
-        // I will rely on the main prompt to give me a good "imagePrompt".
-        // I'll update the main prompt instruction instead (already done in previous plan, but let's reinforce).
-
-        // REINFORCING THE IMAGE PROMPT FROM THE MAIN GENERATION
-        // The main prompt already asks for "imagePrompt".
-        // Let's ensure we use it or a very strong constructed one.
-        if (!postContent.imagePrompt || postContent.imagePrompt.includes("Professional photo about")) {
-            postContent.imagePrompt = `A visually striking, professional editorial photograph representing "${randomTopic}". High contrast, cinematic lighting, 8k resolution.`;
-        }
+        // REMOVED: The logic that overwrote the prompt with "Editorial style..." based on keywords. We now trust the AI's summary.
 
         // Verifica se o link vazou para o texto
         if (pdfDownloadLink && postContent.content.includes(pdfDownloadLink)) {

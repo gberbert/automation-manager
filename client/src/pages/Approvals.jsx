@@ -26,6 +26,11 @@ export default function Approvals() {
     const [refineInstructions, setRefineInstructions] = useState('');
     const [isRefining, setIsRefining] = useState(false);
 
+    // Image Regen State
+    const [regenModalOpen, setRegenModalOpen] = useState(false);
+    const [regenInstruction, setRegenInstruction] = useState('');
+    const [regenTargetPost, setRegenTargetPost] = useState(null);
+
     const fileInputRef = useRef(null);
 
     const fetchPosts = useCallback(async () => {
@@ -139,28 +144,44 @@ export default function Approvals() {
         setEditingPost(null);
     };
 
-    const handleRegenerateImage = async (post) => {
-        setRegeneratingImage(post.id);
+    const handleRegenerateImage = (post) => {
+        setRegenTargetPost(post);
+        setRegenInstruction('');
+        setRegenModalOpen(true);
+    };
+
+    const confirmRegeneration = async () => {
+        if (!regenTargetPost) return;
+        setRegenModalOpen(false); // fecha modal imediatamente
+        setRegeneratingImage(regenTargetPost.id);
         setErrorMsg(null);
+
         try {
             const getApiUrl = (ep) => {
                 const host = window.location.hostname;
                 if (host === 'localhost' || host === '127.0.0.1') return `http://localhost:3000/api/${ep}`;
                 return `/api/${ep}`;
             };
+
+            // Constrói o prompt com a instrução extra, se houver
+            let finalPrompt = regenTargetPost.imagePrompt || `Photo about ${regenTargetPost.topic}`;
+            if (regenInstruction.trim()) {
+                finalPrompt += `. INSTRUCTION: ${regenInstruction.trim()}`;
+            }
+
             const response = await fetch(getApiUrl('regenerate-image'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    postId: post.id,
-                    prompt: post.imagePrompt || `Photo about ${post.topic}`
+                    postId: regenTargetPost.id,
+                    prompt: finalPrompt
                 })
             });
             const result = await response.json();
 
             if (result.success) {
-                setPosts(prev => prev.map(p => p.id === post.id ? { ...p, imageUrl: result.imageUrl, modelUsed: result.modelUsed } : p));
-                setImageLoadErrors(prev => ({ ...prev, [post.id]: false }));
+                setPosts(prev => prev.map(p => p.id === regenTargetPost.id ? { ...p, imageUrl: result.imageUrl, modelUsed: result.modelUsed, imagePrompt: finalPrompt } : p));
+                setImageLoadErrors(prev => ({ ...prev, [regenTargetPost.id]: false }));
             } else {
                 setErrorMsg(`Erro: ${result.error}`);
             }
@@ -168,6 +189,7 @@ export default function Approvals() {
             setErrorMsg("Falha ao regenerar (Rede/Servidor).");
         } finally {
             setRegeneratingImage(null);
+            setRegenTargetPost(null);
         }
     };
     const handleUploadClick = (postId) => {
@@ -478,6 +500,39 @@ export default function Approvals() {
                             <button onClick={handleRefineText} disabled={isRefining || !refineInstructions.trim()} className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2">
                                 {isRefining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                                 {isRefining ? 'Gerando...' : 'Gerar Novo Texto'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL REGENERATE IMAGE */}
+            {regenModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-fadeIn">
+                    <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl flex flex-col">
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800/50 rounded-t-xl">
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2"><RefreshCw className="w-5 h-5 text-purple-400" /> Refinar Imagem (IA)</h3>
+                            <button onClick={() => setRegenModalOpen(false)} className="text-gray-400 hover:text-white"><X className="w-6 h-6" /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-300">
+                                Deseja adicionar algum direcionamento extra para a criação da nova imagem?
+                                <br /><span className="text-xs text-gray-500">(Deixe em branco para apenas tentar novamente com o prompt original)</span>
+                            </p>
+                            <textarea
+                                value={regenInstruction}
+                                onChange={(e) => setRegenInstruction(e.target.value)}
+                                className="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-white focus:border-purple-500 outline-none min-h-[100px]"
+                                placeholder="Ex: Deixe a imagem mais escura, remova o texto, estilo cyberpunk..."
+                            />
+                        </div>
+                        <div className="p-4 border-t border-gray-700 bg-gray-800/30 rounded-b-xl flex justify-end gap-3">
+                            <button onClick={() => setRegenModalOpen(false)} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">Cancelar</button>
+                            <button
+                                onClick={confirmRegeneration}
+                                className="bg-purple-600 hover:bg-purple-500 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"
+                            >
+                                <RefreshCw className="w-4 h-4" /> Gerar Nova Imagem
                             </button>
                         </div>
                     </div>

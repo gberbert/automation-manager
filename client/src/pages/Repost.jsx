@@ -149,13 +149,16 @@ export default function Repost() {
     };
 
     // AÇÃO 1: POST AUTORAL
-    const handleAuthorialPost = async () => {
+    const handleAuthorialPost = async (overrideTopic = null) => {
         setLoadingAction('authorial');
         try {
             const getApiUrl = (ep) => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? `http://localhost:3000/api/${ep}` : `/api/${ep}`;
 
             // Combine text for manual topic, but send link separately
-            let topic = incomingText || (selectedImage ? "Análise da Imagem" : "");
+            let topic = overrideTopic || incomingText || (selectedImage ? "Análise da Imagem" : "");
+
+            // Se o tópico for objeto/evento, extrair o valor correto. Aqui assumimos string.
+            // O overrideTopic vem do click do botão.
 
             const response = await fetch(getApiUrl('generate-content'), {
                 method: 'POST',
@@ -244,6 +247,9 @@ export default function Repost() {
         );
     };
 
+    // Estado adicional para Tópico Customizado
+    const [customTopic, setCustomTopic] = useState('');
+
     // Renderizador da Seção Autoral (Novo)
     const renderAuthorialSection = () => {
         // Obter tópicos disponíveis (Settings Strategy Image -> Topics ou Global Topics)
@@ -256,23 +262,14 @@ export default function Repost() {
                 </h4>
                 <p className="text-sm text-gray-400">
                     O sistema usará o link compartilhado como <strong>Fonte</strong>.
-                    Selecione um tópico abaixo para guiar o tema (ou deixe em branco para usar o texto do link).
+                    <br />
+                    <span className="text-yellow-400 font-bold">Obrigatório:</span> Selecione um tópico na lista OU digite um novo tópico abaixo.
                 </p>
 
                 {/* Seletor de Tópicos */}
                 <div className="bg-gray-800 p-3 rounded-lg border border-gray-600 max-h-40 overflow-y-auto">
-                    <label className="text-xs text-gray-400 font-bold mb-2 block sticky top-0 bg-gray-800 pb-1">TÓPICO (Opcional):</label>
+                    <label className="text-xs text-gray-400 font-bold mb-2 block sticky top-0 bg-gray-800 pb-1">OPÇÃO 1: SELECIONE DA LISTA</label>
                     <div className="space-y-1">
-                        <label className="flex items-center gap-2 hover:bg-gray-700 p-1 rounded cursor-pointer">
-                            <input
-                                type="radio"
-                                name="topic"
-                                value=""
-                                checked={incomingText === (searchParams.get('text') || searchParams.get('title') || '')}
-                                onChange={() => setIncomingText(searchParams.get('text') || searchParams.get('title') || '')}
-                            />
-                            <span className="text-sm text-gray-300 italic">Automático (Baseado no Link/Texto)</span>
-                        </label>
                         {topics.map((t, i) => (
                             <label key={i} className="flex items-center gap-2 hover:bg-gray-700 p-1 rounded cursor-pointer">
                                 <input
@@ -280,7 +277,7 @@ export default function Repost() {
                                     name="topic"
                                     value={t}
                                     checked={incomingText === t}
-                                    onChange={(e) => setIncomingText(e.target.value)}
+                                    onChange={(e) => { setIncomingText(e.target.value); setCustomTopic(''); }}
                                 />
                                 <span className="text-sm text-gray-300">{t}</span>
                             </label>
@@ -288,10 +285,27 @@ export default function Repost() {
                     </div>
                 </div>
 
+                {/* Input Customizado */}
+                <div className="bg-gray-800 p-3 rounded-lg border border-gray-600">
+                    <label className="text-xs text-gray-400 font-bold mb-1 block">OPÇÃO 2: OUTRO TÓPICO</label>
+                    <input
+                        type="text"
+                        value={customTopic}
+                        onChange={(e) => { setCustomTopic(e.target.value); setIncomingText(''); }} // Limpa seleção da lista ao digitar
+                        placeholder="Digite o tópico desejado..."
+                        className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none placeholder-gray-600"
+                    />
+                </div>
+
                 <button
-                    onClick={handleAuthorialPost}
-                    disabled={loadingAction === 'authorial'}
-                    className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 mt-2"
+                    onClick={() => {
+                        // Força o envio do Tópico correto
+                        const finalTopic = incomingText || customTopic;
+                        if (!finalTopic) return alert("Por favor, selecione ou digite um tópico.");
+                        handleAuthorialPost(finalTopic);
+                    }}
+                    disabled={loadingAction === 'authorial' || (!incomingText && !customTopic)}
+                    className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 mt-2 transition-all"
                 >
                     {loadingAction === 'authorial' ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenTool className="w-5 h-5" />}
                     Gerar Post Completo
@@ -299,7 +313,6 @@ export default function Repost() {
             </div>
         );
     };
-
     return (
         <div className="max-w-3xl mx-auto space-y-8 animate-fadeIn pb-20">
             {/* CABEÇALHO */}
@@ -355,7 +368,7 @@ export default function Repost() {
                         <span className="text-[10px] opacity-70">Pergunta ou Resposta</span>
                     </button>
 
-                    {/* Botão 3: Post Autoral (Corrigido: Agora é um seletor) */}
+                    {/* Botão 3: Post Autoral */}
                     <button onClick={() => { setSelectedAction('authorial'); setSelectedContext(''); }} className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${selectedAction === 'authorial' ? 'bg-blue-600/20 border-blue-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'}`}>
                         <PenTool className="w-8 h-8 mb-1" />
                         <span className="font-bold">Post Autoral</span>
