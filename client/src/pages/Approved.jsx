@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Clock, Calendar, ChevronDown, ChevronUp, Send, Loader2, Edit2, Trash2, Save, ImageOff, X, AlertCircle, FileText, Download, ExternalLink, AlertTriangle, Camera, RefreshCw, Upload, Check, Search, Image as ImageIcon, Wand2, GripVertical, Rocket, ListOrdered } from 'lucide-react';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -12,7 +12,7 @@ function SortableItem({ id, children }) {
 
     return (
         <div ref={setNodeRef} style={style} className={`bg-gray-800/50 backdrop-blur rounded-xl border border-gray-700 overflow-hidden ${isDragging ? 'shadow-2xl ring-2 ring-blue-500 bg-gray-700' : ''}`}>
-            <div {...attributes} {...listeners} className="absolute left-0 top-0 bottom-0 w-8 bg-gray-900/50 hover:bg-blue-600/30 cursor-grab flex items-center justify-center z-20 group transition-colors border-r border-gray-700/50">
+            <div {...attributes} {...listeners} className="absolute left-0 top-0 bottom-0 w-8 bg-gray-900/50 hover:bg-blue-600/30 cursor-grab flex items-center justify-center z-20 group transition-colors border-r border-gray-700/50 touch-none">
                 <GripVertical className="w-5 h-5 text-gray-500 group-hover:text-blue-400" />
             </div>
             <div className="pl-8">
@@ -60,7 +60,8 @@ export default function Approved() {
 
     // --- DRAG AND DROP ---
     const sensors = useSensors(
-        useSensor(PointerSensor),
+        useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
 
@@ -467,8 +468,8 @@ export default function Approved() {
                                                     <div className="flex items-center gap-3 mb-2 flex-wrap">
                                                         {/* BADGE DE ORDEM */}
                                                         <div className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1 ${index === 0
-                                                                ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
-                                                                : 'bg-gray-700 text-gray-300 border-gray-600'
+                                                            ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20'
+                                                            : 'bg-gray-700 text-gray-300 border-gray-600'
                                                             }`}>
                                                             {index === 0 ? <Rocket className="w-3 h-3" /> : <ListOrdered className="w-3 h-3" />}
                                                             {index === 0 ? "PRÓXIMO POST (#1)" : `FILA #${index + 1}`}
