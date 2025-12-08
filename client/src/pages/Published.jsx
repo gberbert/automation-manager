@@ -2,11 +2,13 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CheckCircle, Calendar, ChevronDown, ChevronUp, Undo2, Trash2, FileText, Image as ImageIcon } from 'lucide-react';
+import ImageViewer from '../components/ImageViewer';
 
 export default function Published() {
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedPost, setExpandedPost] = useState(null);
+    const [popupImage, setPopupImage] = useState(null);
 
     const fetchPosts = useCallback(async () => {
         setLoading(true);
@@ -32,11 +34,12 @@ export default function Published() {
             try {
                 await updateDoc(doc(db, 'posts', postId), {
                     status: 'approved',
-                    linkedinPostId: null 
+                    linkedinPostId: null
                 });
                 fetchPosts();
                 setExpandedPost(null);
-            } catch (e) { alert("Erro ao reverter: " + e.message);
+            } catch (e) {
+                alert("Erro ao reverter: " + e.message);
             }
         }
     };
@@ -46,7 +49,8 @@ export default function Published() {
                 await deleteDoc(doc(db, 'posts', postId));
                 fetchPosts();
                 setExpandedPost(null);
-            } catch (e) { alert("Erro ao excluir: " + e.message);
+            } catch (e) {
+                alert("Erro ao excluir: " + e.message);
             }
         }
     };
@@ -67,6 +71,8 @@ export default function Published() {
                 </button>
             </div>
 
+            <ImageViewer src={popupImage} isOpen={!!popupImage} onClose={() => setPopupImage(null)} />
+
             {loading ? <div className="text-center text-gray-400 py-12">Loading posts...</div> : (
                 <div className="space-y-4">
                     {posts.map((post) => {
@@ -82,7 +88,7 @@ export default function Published() {
                                                 <div className="px-3 py-1 rounded-full text-xs font-medium border bg-blue-500/20 text-blue-400 border-blue-500/30">
                                                     PUBLISHED
                                                 </div>
-                                                
+
                                                 {/* BADGE DE TIPO DE MÍDIA */}
                                                 <div className="px-2 py-1 rounded text-xs font-medium bg-gray-700/50 text-gray-300 border border-gray-600 flex items-center gap-1">
                                                     {post.mediaType === 'pdf' ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
@@ -113,15 +119,20 @@ export default function Published() {
                                                         <span className="bg-black/70 backdrop-blur text-blue-400 text-[10px] font-mono px-2 py-1 rounded border border-blue-500/30 shadow-lg">TOP #{post.metaIndexes.topic}</span>
                                                     </div>
                                                 )}
-                                                <img src={post.imageUrl} alt={post.topic} className="w-full h-full object-cover" />
-                                                
+                                                <img
+                                                    src={post.imageUrl}
+                                                    alt={post.topic}
+                                                    className="w-full h-full object-cover cursor-zoom-in"
+                                                    onClick={(e) => { e.stopPropagation(); setPopupImage(post.imageUrl); }}
+                                                />
+
                                                 {/* BOTÃO PDF (SE TIVER) */}
                                                 {post.mediaType === 'pdf' && post.originalPdfUrl && (
                                                     <div className="absolute bottom-3 left-3 z-30">
-                                                        <a 
-                                                            href={post.originalPdfUrl} 
-                                                            target="_blank" 
-                                                            rel="noopener noreferrer" 
+                                                        <a
+                                                            href={post.originalPdfUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
                                                             className="flex items-center gap-2 bg-red-600/90 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow-lg backdrop-blur-sm transition-all border border-red-500/50"
                                                         >
                                                             <FileText className="w-4 h-4" />
@@ -150,10 +161,10 @@ export default function Published() {
                                                     <CheckCircle className="w-4 h-4" /><span>Successfully Published</span>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <button onClick={(e)=>{e.stopPropagation(); handleRevertToApproved(post.id)}} className="flex items-center gap-1 bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-500 px-3 py-2 rounded text-xs border border-yellow-600/30 transition-colors">
+                                                    <button onClick={(e) => { e.stopPropagation(); handleRevertToApproved(post.id) }} className="flex items-center gap-1 bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-500 px-3 py-2 rounded text-xs border border-yellow-600/30 transition-colors">
                                                         <Undo2 className="w-3 h-3" /> Move to Approved
                                                     </button>
-                                                    <button onClick={(e)=>{e.stopPropagation(); handleDelete(post.id)}} className="flex items-center gap-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-2 rounded text-xs border border-red-600/30 transition-colors">
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(post.id) }} className="flex items-center gap-1 bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-2 rounded text-xs border border-red-600/30 transition-colors">
                                                         <Trash2 className="w-3 h-3" /> Delete
                                                     </button>
                                                 </div>

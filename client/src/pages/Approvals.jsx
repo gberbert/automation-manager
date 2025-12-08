@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, getDocs, updateDoc, doc, deleteDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Check, X, Clock, Calendar, ChevronDown, ChevronUp, Linkedin, Instagram, Edit2, Save, RefreshCw, Layers, ImageOff, AlertCircle, Wand2, Upload, Camera, Search, Download, ExternalLink, FileText, AlertTriangle, Trash2, Image as ImageIcon, Loader2 } from 'lucide-react';
+import ImageViewer from '../components/ImageViewer';
 
 export default function Approvals() {
     const [posts, setPosts] = useState([]);
@@ -14,6 +15,7 @@ export default function Approvals() {
     const [uploadingImage, setUploadingImage] = useState(null);
     const [imageLoadErrors, setImageLoadErrors] = useState({});
     const [errorMsg, setErrorMsg] = useState(null);
+    const [popupImage, setPopupImage] = useState(null);
     // Unsplash states
     const [unsplashModalOpen, setUnsplashModalOpen] = useState(false);
     const [unsplashQuery, setUnsplashQuery] = useState('');
@@ -379,7 +381,13 @@ export default function Approvals() {
                 )}
 
                 {currentImageUrl && !hasImageError ? (
-                    <img src={currentImageUrl} alt={post.topic} className="w-full h-full object-cover transition-opacity group-hover:opacity-90" onError={() => handleImageError(post.id)} />
+                    <img
+                        src={currentImageUrl}
+                        alt={post.topic}
+                        className="w-full h-full object-cover transition-opacity group-hover:opacity-90 cursor-zoom-in"
+                        onError={() => handleImageError(post.id)}
+                        onClick={(e) => { e.stopPropagation(); setPopupImage(currentImageUrl); }}
+                    />
                 ) : (
                     <div className="flex flex-col items-center gap-2 text-gray-500"><ImageOff className="w-8 h-8" /><span>No Image</span></div>
                 )}
@@ -438,6 +446,8 @@ export default function Approvals() {
             )}
 
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+
+            <ImageViewer src={popupImage} isOpen={!!popupImage} onClose={() => setPopupImage(null)} />
 
             {/* MODAL UNSPLASH */}
             {unsplashModalOpen && (

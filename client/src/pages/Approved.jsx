@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Clock, Calendar, ChevronDown, ChevronUp, Send, Loader2, Edit2, Trash2, Save, ImageOff, X, AlertCircle, FileText, Download, ExternalLink, AlertTriangle, Camera, RefreshCw, Upload, Check, Search, Image as ImageIcon, Wand2, GripVertical, Rocket, ListOrdered } from 'lucide-react';
+import ImageViewer from '../components/ImageViewer';
 import { DndContext, closestCenter, KeyboardSensor, MouseSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -26,6 +27,7 @@ export default function Approved() {
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedPost, setExpandedPost] = useState(null);
+    const [popupImage, setPopupImage] = useState(null);
 
     // Estados
     const [publishingId, setPublishingId] = useState(null);
@@ -330,7 +332,7 @@ export default function Approved() {
 
                 {/* IMAGEM DE FUNDO (CAPA) */}
                 {url && !err ? (
-                    <img src={url} className="w-full h-full object-cover transition-opacity group-hover:opacity-90" onError={() => setImageLoadErrors(p => ({ ...p, [post.id]: true }))} />
+                    <img src={url} className="w-full h-full object-cover transition-opacity group-hover:opacity-90 cursor-zoom-in" onError={() => setImageLoadErrors(p => ({ ...p, [post.id]: true }))} onClick={(e) => { e.stopPropagation(); setPopupImage(url); }} />
                 ) : (
                     <div className="flex flex-col items-center gap-2 text-gray-500"><ImageOff className="w-8 h-8" /><span>No Image</span></div>
                 )}
@@ -371,6 +373,7 @@ export default function Approved() {
         <div className="space-y-8">
             <div className="flex justify-between items-center"><h2 className="text-3xl font-bold text-white">Approved Posts</h2><button onClick={fetchPosts} className="flex items-center gap-2 bg-gray-800 px-4 py-2 rounded border border-gray-700 text-blue-400"><Clock className="w-4 h-4" /> Refresh</button></div>
             {errorMsg && <div className="fixed top-20 right-4 bg-red-900 text-white px-6 py-4 rounded border border-red-500 z-50 flex gap-3 items-center"><AlertTriangle className="w-5 h-5" />{errorMsg}<button onClick={() => setErrorMsg(null)}><X className="w-4 h-4" /></button></div>}
+            <ImageViewer src={popupImage} isOpen={!!popupImage} onClose={() => setPopupImage(null)} />
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
             {/* MODAL REFINEMENT */}
