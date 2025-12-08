@@ -49,7 +49,7 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
 
         // 2. Lança o Puppeteer apontando para esse binário
         browser = await puppeteer.launch({
-            headless: headless,
+            headless: false,
             executablePath: executablePath,
             defaultViewport: null,
             args: [
@@ -139,38 +139,171 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                 // Tenta expandir comentários
                 try {
                     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-                    await new Promise(r => setTimeout(r, 2000));
+                    await new Promise(r => setTimeout(r, 1000));
 
-                    const loadMoreSelectors = ['button.comments-comments-list__load-more-comments-button', 'button.scaffold-finite-scroll__load-button'];
+                    // 1. Tenta abrir a seção de comentários clicando no contador (ex: "1 comentário")
+                    const commentCountBtn = await page.$('.social-details-social-counts__comments');
+                    if (commentCountBtn) {
+                        console.log("Clicando para expandir seção de comentários...");
+                        await commentCountBtn.click();
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+
+                    // PAUSA PARA INVESTIGAÇÃO VISUAL (Se estiver rodando local)
+                    if (!headless) {
+                        // console.log("🛑 PAUSA DE DEBUG (20s) REMOVIDA.");
+                    } else {
+                        // Tenta botão de ação "Comentar" se a lista não estiver visível
+                        const commentAction = await page.$('button[aria-label*="Comentar"]');
+                        if (commentAction) {
+                            await commentAction.click();
+                            await new Promise(r => setTimeout(r, 2000));
+                        }
+                    }
+
+                    // 2. Carrega mais comentários se houver paginação
+                    const loadMoreSelectors = [
+                        'button.comments-comments-list__load-more-comments-button',
+                        'button.scaffold-finite-scroll__load-button',
+                        '.comments-comments-list__show-previous-button'
+                    ];
                     for (const sel of loadMoreSelectors) {
                         const btn = await page.$(sel);
-                        if (btn) await btn.click().catch(() => { });
+                        if (btn) {
+                            console.log("Clicando em carregar mais...");
+                            await btn.click().catch(() => { });
+                            await new Promise(r => setTimeout(r, 1500));
+                        }
                     }
-                    await new Promise(r => setTimeout(r, 2000));
-                } catch (e) { /* ignore */ }
+                } catch (e) {
+                    console.log("Erro na expansão de comentários:", e.message);
+                }
 
-                // Extrai dados
+                // --- ESTRATÉGIA DE EXTRAÇÃO DE COMENTÁRIOS ---
                 const comments = await page.evaluate(() => {
-                    const items = document.querySelectorAll('article.comments-comment-item');
+                    // --- FUNÇÕES AUXILIARES ---
+                    const getSafeText = (el) => el ? el.innerText.trim() : "";
+                    // NOVA Versão do Fallback Inteligente (Smart Parsing)
+                    const cleanBrutalText = (text) => {
+                        let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                        if (lines.length < 2) return null;
+
+                        // 1. Autor: Tenta limpar sufixos (bullet, ponto, grau de conexão)
+                        let authorLine = lines[0].replace(/[\.·•]\s*[123]º.*/, '').replace(/\(.*\)/, '').trim();
+
+                        // FILTRO: Ignora se começar com "Autor" (label do LinkedIn capturado errado ou indesejado)
+                        if (/^autor/i.test(authorLine)) return null;
+
+                        // 2. Processa o resto
+                        let remainingLines = lines.slice(1);
+                        let cleanCommentLines = [];
+
+                        for (let i = 0; i < remainingLines.length; i++) {
+                            const line = remainingLines[i];
+                            const lowerLine = line.toLowerCase();
+
+                            // A. Ignora Linhas de Métrica/Conexão
+                            if (/^[•·]\s*[123]º/.test(line) || line === '•' || line.includes('• 1º') || line.includes('• 2º')) continue;
+
+                            // B. Ignora Título Profissional (Heurística)
+                            if (line.includes('|') || line.includes('CRP') || (line.length > 30 && (line.includes(' at ') || line.includes(' em ') || line.includes('Designer') || line.includes('Engineer') || line.includes('Consultor')))) continue;
+
+                            // C. Ignora Tempo
+                            if (/^\d+\s*[hdm]\s*$/.test(line) || ['agora', 'editado', '(editado)'].includes(lowerLine)) continue;
+
+                            // D. Ignora Rodapé
+                            const junkKeywords = ['gostar', 'responder', 'ver tradução', 'carregar anteriores', '...mais', 'gostei', 'like', 'reply', 'comentários'];
+                            if (junkKeywords.some(kw => lowerLine === kw || (lowerLine.includes(kw) && line.length < 25))) continue;
+
+                            // E. Ignora números soltos
+                            if (/^\d+$/.test(line)) continue;
+
+                            cleanCommentLines.push(line);
+                        }
+
+                        const finalText = cleanCommentLines.join(' ').trim();
+                        if (!finalText) return null;
+
+                        // NOVO FILTRO: Se o texto começar com "Autor(a)", geralmente é comentário do próprio dono. Descartar.
+                        if (/^autor\(a\)/i.test(finalText)) return null;
+
+                        return { author: authorLine, text: finalText };
+                    };
+
+                    // 1. ESTRATÉGIA A: SELETORES PADRÃO
+                    const possibleItemSelectors = [
+                        'article.comments-comment-item',
+                        '.comments-comments-list__comment-item',
+                        'li.comments-comments-list__comment-item',
+                        'li.comments-comment-item',
+                        'div.comments-comment-item'
+                    ];
+
+                    let items = [];
+                    for (const sel of possibleItemSelectors) {
+                        const found = document.querySelectorAll(sel);
+                        if (found.length > 0) {
+                            items = Array.from(found);
+                            items = items.filter(el => el.offsetHeight > 0);
+                            if (items.length > 0) break;
+                        }
+                    }
+
+                    // 2. ESTRATÉGIA B: SELF-HEALING REVERSO
+                    if (items.length === 0) {
+                        // console.log("⚠️ Seletores de classe falharam. Iniciando Self-Healing Reverso...");
+                        const actionButtons = Array.from(document.querySelectorAll('button'));
+                        const candidates = new Set();
+                        actionButtons.forEach(btn => {
+                            const txt = btn.innerText.toLowerCase();
+                            const label = (btn.getAttribute('aria-label') || "").toLowerCase();
+                            if (txt.includes('gostar') || txt.includes('responder') || label.includes('responder') || label.includes('like')) {
+                                let parent = btn.parentElement;
+                                for (let i = 0; i < 8; i++) {
+                                    if (!parent) break;
+                                    const tag = parent.tagName;
+                                    const cls = (parent.className || "").toLowerCase();
+                                    if (tag === 'ARTICLE' || tag === 'LI' || (tag === 'DIV' && cls.includes('comment-item'))) {
+                                        candidates.add(parent);
+                                        break;
+                                    }
+                                    parent = parent.parentElement;
+                                }
+                            }
+                        });
+                        if (candidates.size > 0) items = Array.from(candidates);
+                    }
+
                     const results = [];
                     items.forEach(item => {
                         try {
-                            const authorEl = item.querySelector('.comments-post-meta__name-text');
-                            const textEl = item.querySelector('.comments-comment-item__main-content');
-                            const imgEl = item.querySelector('.comments-post-meta__profile-image');
+                            const authorEl = item.querySelector('.comments-post-meta__name-text') || item.querySelector('.comments-post-meta__name') || item.querySelector('span.hoverable-link-text') || item.querySelector('a.app-aware-link');
+                            const textEl = item.querySelector('.comments-comment-item__main-content') || item.querySelector('.feed-shared-main-content--comment') || item.querySelector('.update-components-text') || item.querySelector('span[dir="ltr"]');
+                            const imgEl = item.querySelector('.comments-post-meta__profile-image') || item.querySelector('img');
+
+                            const urn = item.getAttribute('data-id') || item.getAttribute('data-urn') || item.getAttribute('id') || `gen_${Math.random().toString(36).substr(2, 9)}`;
 
                             if (authorEl && textEl) {
-                                let authorName = authorEl.innerText.trim().split('\n')[0].trim();
-                                const text = textEl.innerText.trim();
-                                const avatar = imgEl ? imgEl.src : null;
-                                const urn = item.getAttribute('data-id') || item.getAttribute('id') || `gen_${Math.random()}`;
-
                                 results.push({
                                     id: urn,
-                                    text: text,
-                                    author: { name: authorName, imageUrl: avatar },
-                                    createdAt: new Date().toISOString()
+                                    text: getSafeText(textEl),
+                                    author: { name: getSafeText(authorEl).split('\n')[0].trim(), imageUrl: imgEl ? imgEl.src : null },
+                                    createdAt: new Date().toISOString(),
+                                    _debugMethod: 'standard'
                                 });
+                            } else {
+                                // Fallback
+                                const raw = item.innerText;
+                                const cleaned = cleanBrutalText(raw);
+                                if (cleaned) {
+                                    results.push({
+                                        id: urn,
+                                        text: cleaned.text,
+                                        author: { name: cleaned.author, imageUrl: null },
+                                        createdAt: new Date().toISOString(),
+                                        _debugMethod: 'fallback_smart_v2'
+                                    });
+                                }
                             }
                         } catch (err) { }
                     });
@@ -179,17 +312,28 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
 
                 console.log(`📥 ${comments.length} comentários extraídos.`);
 
+                if (comments.length === 0) {
+                    try {
+                        const html = await page.content();
+                        const debugFile = path.join(__dirname, 'debug_last_view.html');
+                        fs.writeFileSync(debugFile, html);
+                        console.log(`🐛 Debug: HTML salvo em ${debugFile} por não encontrar comentários.`);
+                    } catch (d) { }
+                }
+
                 // Salva no Firestore
                 if (comments.length > 0) {
                     let newCount = 0;
+                    let updatedCount = 0;
                     for (const c of comments) {
-                        // Verifica duplicação
                         const cRef = db.collection('comments').doc(c.id);
-                        const exists = (await cRef.get()).exists;
-                        if (!exists) {
+                        const docSnap = await cRef.get();
+
+                        if (!docSnap.exists) {
                             await cRef.set({
                                 ...c,
                                 postDbId: post.id,
+                                objectUrn: post.linkedinPostId, // FIX: Link do post
                                 postTopic: post.topic,
                                 syncedAt: new Date(),
                                 read: false,
@@ -197,10 +341,20 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                                 source: 'rpa_puppeteer'
                             });
                             newCount++;
+                        } else {
+                            // SE JÁ EXISTE, ATUALIZA O TEXTO (Para refletir melhorias no parser)
+                            await cRef.update({
+                                text: c.text,
+                                author: c.author,
+                                objectUrn: post.linkedinPostId, // Garante que updates antigos peguem o link
+                                _debugMethod: c._debugMethod,
+                                lastSeenAt: new Date()
+                            });
+                            updatedCount++;
                         }
                     }
                     totalCommentsFound += newCount;
-                    console.log(`💾 ${newCount} novos salvos.`);
+                    console.log(`💾 ${newCount} novos salvos, ${updatedCount} atualizados.`);
                 }
             } catch (err) {
                 console.error(`❌ Erro no post ${post.id}:`, err.message);

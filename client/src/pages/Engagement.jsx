@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, RefreshCw, Send, CheckCircle, Clock, ExternalLink, Loader2, Play, AlertTriangle, MonitorPlay } from 'lucide-react';
+import { MessageCircle, RefreshCw, Send, CheckCircle, Clock, ExternalLink, Loader2, Play, AlertTriangle, MonitorPlay, Trash2 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase'; // Import se precisar acesso direto, mas vamos usar API para consistencia
 
@@ -13,7 +13,7 @@ export default function Engagement() {
 
     const getApiUrl = (endpoint) => {
         const host = window.location.hostname;
-        if (host === 'localhost' || host === '127.0.0.1') return `http://localhost:3000/api/${endpoint}`;
+        if (host === 'localhost' || host === '127.0.1') return `http://localhost:3000/api/${endpoint}`;
         return `/api/${endpoint}`;
     };
 
@@ -50,11 +50,17 @@ export default function Engagement() {
         }
     };
 
+    const [rpaLimit, setRpaLimit] = useState(5);
+
     const handleRpaSync = async () => {
         setSyncing(true);
         try {
             alert('Atenção: Uma janela do navegador será aberta no servidor. Se solicitado, faça login manualmente.');
-            const res = await fetch(getApiUrl('rpa/sync-comments'), { method: 'POST' });
+            const res = await fetch(getApiUrl('rpa/sync-comments'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ limit: rpaLimit })
+            });
             const data = await res.json();
             if (data.success) {
                 alert(`Sucesso! RPA capturou ${data.newComments} novos comentários.`);
@@ -67,6 +73,36 @@ export default function Engagement() {
         } finally {
             setSyncing(false);
         }
+    };
+
+    const [confirmDelete, setConfirmDelete] = useState(false);
+
+    useEffect(() => {
+        if (confirmDelete) {
+            const timer = setTimeout(() => setConfirmDelete(false), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [confirmDelete]);
+
+    const handleClearComments = async () => {
+        if (!confirmDelete) {
+            setConfirmDelete(true);
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const res = await fetch(getApiUrl('clear-comments'), { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert(`🧹 Limpeza concluída! ${data.count} comentários removidos.`);
+                setComments([]);
+                setConfirmDelete(false);
+            } else {
+                alert('Erro: ' + data.error);
+            }
+        } catch (e) { alert('Erro ao conectar.'); }
+        finally { setLoading(false); }
     };
 
     const handleReply = async (comment) => {
@@ -125,7 +161,19 @@ export default function Engagement() {
                     </h2>
                     <p className="text-gray-400 text-sm">Monitore e responda comentários do LinkedIn.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                    <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-1 border border-gray-700 mr-2">
+                        <span className="text-xs text-gray-400 ml-2">Posts:</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={rpaLimit}
+                            onChange={(e) => setRpaLimit(parseInt(e.target.value))}
+                            className="bg-gray-900 text-white w-12 text-center text-sm rounded border border-gray-600 focus:border-purple-500 outline-none p-1"
+                        />
+                    </div>
+
                     <button
                         onClick={handleSync}
                         disabled={syncing}
@@ -143,6 +191,14 @@ export default function Engagement() {
                     >
                         <MonitorPlay className={`w-4 h-4 ${syncing ? 'animate-pulse' : ''}`} />
                         <span>Sincronizar (RPA)</span>
+                    </button>
+                    <button
+                        onClick={handleClearComments}
+                        disabled={syncing || loading}
+                        className={`flex items-center justify-center px-3 py-2 rounded-lg transition-all disabled:opacity-50 border ${confirmDelete ? 'bg-red-600 text-white border-red-500 font-bold' : 'bg-red-900/50 hover:bg-red-900 text-red-300 border-red-900'}`}
+                        title="LIMPAR para Testes (Deleta tudo)"
+                    >
+                        {confirmDelete ? <span className="text-xs">CONFIRMAR?</span> : <Trash2 className="w-4 h-4" />}
                     </button>
                 </div>
             </div>

@@ -444,7 +444,7 @@ app.post('/api/rpa/sync-comments', async (req, res) => {
         const email = process.env.LINKEDIN_EMAIL;
         const password = process.env.LINKEDIN_PASSWORD;
 
-        const limitPosts = 5; // Limita a 5 posts por vez para não bloquear
+        const limitPosts = req.body.limit ? parseInt(req.body.limit) : 5; // Limita posts, default 5
         console.log(`🤖 RPA Manual: Buscando comentários dos últimos ${limitPosts} posts...`);
 
         const postsSnap = await db.collection('posts')
@@ -514,6 +514,31 @@ app.post('/api/mark-read/:id', async (req, res) => {
         await db.collection('comments').doc(req.params.id).update({ read: true });
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/clear-comments', async (req, res) => {
+    try {
+        const snapshot = await db.collection('comments').get();
+        if (snapshot.size === 0) return res.json({ success: true, count: 0 });
+
+        const batchSize = 400; // Margem segura abaixo de 500
+        const items = snapshot.docs;
+        let totalDeleted = 0;
+
+        for (let i = 0; i < items.length; i += batchSize) {
+            const batch = db.batch();
+            const chunk = items.slice(i, i + batchSize);
+            chunk.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            totalDeleted += chunk.length;
+        }
+
+        console.log(`🧹 Limpeza de Teste: ${totalDeleted} comentários removidos.`);
+        res.json({ success: true, count: totalDeleted });
+    } catch (e) {
+        console.error("Erro ao limpar comentários:", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 

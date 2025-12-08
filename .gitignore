@@ -24,3 +24,7 @@ automation-manager-31e5a-firebase-adminsdk-fbsvc-3df9ff56ef.json
 serviceAccountKey.json
 CONTEXTO_COMPLETO_PROJETO.txt
 node_modules
+server_debug.log
+server/server_debug.log
+debug_last_comments.json
+*.log
