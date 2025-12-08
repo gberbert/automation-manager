@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, RefreshCw, Send, CheckCircle, Clock, ExternalLink, Loader2, Play, AlertTriangle } from 'lucide-react';
+import { MessageCircle, RefreshCw, Send, CheckCircle, Clock, ExternalLink, Loader2, Play, AlertTriangle, MonitorPlay } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase'; // Import se precisar acesso direto, mas vamos usar API para consistencia
 
@@ -38,13 +38,32 @@ export default function Engagement() {
             const res = await fetch(getApiUrl('sync-comments'), { method: 'POST' });
             const data = await res.json();
             if (data.success) {
-                alert(`Sincronização concluída! ${data.newComments} novos comentários.`);
+                alert(`Sincronização API concluída! ${data.newComments} novos comentários.`);
                 fetchComments();
             } else {
-                alert('Erro na sincronização: ' + data.error);
+                alert('Erro na sincronização API: ' + data.error);
             }
         } catch (error) {
             alert('Erro ao conectar com servidor.');
+        } finally {
+            setSyncing(false);
+        }
+    };
+
+    const handleRpaSync = async () => {
+        setSyncing(true);
+        try {
+            alert('Atenção: Uma janela do navegador será aberta no servidor. Se solicitado, faça login manualmente.');
+            const res = await fetch(getApiUrl('rpa/sync-comments'), { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert(`Sucesso! RPA capturou ${data.newComments} novos comentários.`);
+                fetchComments();
+            } else {
+                alert('Erro no RPA: ' + data.error);
+            }
+        } catch (error) {
+            alert('Erro na conexão com RPA.');
         } finally {
             setSyncing(false);
         }
@@ -106,14 +125,26 @@ export default function Engagement() {
                     </h2>
                     <p className="text-gray-400 text-sm">Monitore e responda comentários do LinkedIn.</p>
                 </div>
-                <button
-                    onClick={handleSync}
-                    disabled={syncing}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-all disabled:opacity-50"
-                >
-                    <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                    <span>{syncing ? 'Sincronizando...' : 'Sincronizar Agora'}</span>
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleSync}
+                        disabled={syncing}
+                        className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg transition-all disabled:opacity-50 text-xs border border-gray-600"
+                        title="Tentativa via API Oficial"
+                    >
+                        <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+                        <span>API Sync</span>
+                    </button>
+                    <button
+                        onClick={handleRpaSync}
+                        disabled={syncing}
+                        className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg transition-all disabled:opacity-50 shadow-lg shadow-purple-900/20"
+                        title="Abrir navegador e varrer posts (RPA)"
+                    >
+                        <MonitorPlay className={`w-4 h-4 ${syncing ? 'animate-pulse' : ''}`} />
+                        <span>Sincronizar (RPA)</span>
+                    </button>
+                </div>
             </div>
 
             {/* TAB FILTERS */}

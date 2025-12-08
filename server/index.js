@@ -8,6 +8,7 @@ const path = require('path');
 const { generatePost, generateReaction, refineText } = require('./utils/gemini');
 const { publishPost, uploadImageOnly, postComment, fetchComments, replyToComment } = require('./utils/linkedin');
 const { generateMedia, uploadToCloudinary, searchUnsplash } = require('./utils/mediaHandler');
+const { scrapeLinkedInComments } = require('./services/linkedinScraper');
 
 require('dotenv').config();
 
@@ -427,6 +428,47 @@ app.post('/api/sync-comments', async (req, res) => {
             }
         }
         res.json({ success: true, newComments: totalNew });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// --- ROTA RPA (PUPPETEER) ---
+app.post('/api/rpa/sync-comments', async (req, res) => {
+    try {
+        const settingsDoc = await db.collection('settings').doc('global').get();
+        // const settings = settingsDoc.data(); // Se tiver config de credenciais no banco, usar aqui
+
+        // Pega as credenciais do .env ou do request
+        const email = process.env.LINKEDIN_EMAIL;
+        const password = process.env.LINKEDIN_PASSWORD;
+
+        const limitPosts = 5; // Limita a 5 posts por vez para não bloquear
+        console.log(`🤖 RPA Manual: Buscando comentários dos últimos ${limitPosts} posts...`);
+
+        const postsSnap = await db.collection('posts')
+            .where('status', '==', 'published')
+            .orderBy('publishedAt', 'desc')
+            .limit(limitPosts)
+            .get();
+
+        const postsToScan = postsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Executa o Scraper
+        // Se estiver rodando local, headless: false ajuda a ver. Em produção, true.
+        // Vamos forçar false aqui pois o usuário pediu "loga acessa navega" e provavelmente quer ver/interagir se precisar.
+        const result = await scrapeLinkedInComments(db, postsToScan, {
+            email,
+            password,
+            headless: false
+        });
+
+        if (result.success) {
+            res.json({ success: true, newComments: result.newComments });
+        } else {
+            res.status(500).json({ error: result.error });
+        }
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: e.message });

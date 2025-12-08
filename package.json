@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "firebase": "^12.6.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "puppeteer": "^24.32.1"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
