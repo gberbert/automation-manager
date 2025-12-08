@@ -49,7 +49,7 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
 
         // 2. Lança o Puppeteer apontando para esse binário
         browser = await puppeteer.launch({
-            headless: false,
+            headless: headless,
             executablePath: executablePath,
             defaultViewport: null,
             args: [
