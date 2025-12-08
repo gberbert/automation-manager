@@ -16,6 +16,7 @@ export default function Approvals() {
     const [imageLoadErrors, setImageLoadErrors] = useState({});
     const [errorMsg, setErrorMsg] = useState(null);
     const [popupImage, setPopupImage] = useState(null);
+    const [popupAlt, setPopupAlt] = useState('');
     // Unsplash states
     const [unsplashModalOpen, setUnsplashModalOpen] = useState(false);
     const [unsplashQuery, setUnsplashQuery] = useState('');
@@ -386,7 +387,7 @@ export default function Approvals() {
                         alt={post.topic}
                         className="w-full h-full object-cover transition-opacity group-hover:opacity-90 cursor-zoom-in"
                         onError={() => handleImageError(post.id)}
-                        onClick={(e) => { e.stopPropagation(); setPopupImage(currentImageUrl); }}
+                        onClick={(e) => { e.stopPropagation(); setPopupImage(currentImageUrl); setPopupAlt(post.topic); }}
                     />
                 ) : (
                     <div className="flex flex-col items-center gap-2 text-gray-500"><ImageOff className="w-8 h-8" /><span>No Image</span></div>
@@ -447,7 +448,7 @@ export default function Approvals() {
 
             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
 
-            <ImageViewer src={popupImage} isOpen={!!popupImage} onClose={() => setPopupImage(null)} />
+            <ImageViewer src={popupImage} alt={popupAlt} isOpen={!!popupImage} onClose={() => setPopupImage(null)} />
 
             {/* MODAL UNSPLASH */}
             {unsplashModalOpen && (

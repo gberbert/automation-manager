@@ -9,6 +9,7 @@ export default function Published() {
     const [loading, setLoading] = useState(true);
     const [expandedPost, setExpandedPost] = useState(null);
     const [popupImage, setPopupImage] = useState(null);
+    const [popupAlt, setPopupAlt] = useState('');
 
     const fetchPosts = useCallback(async () => {
         setLoading(true);
@@ -71,7 +72,7 @@ export default function Published() {
                 </button>
             </div>
 
-            <ImageViewer src={popupImage} isOpen={!!popupImage} onClose={() => setPopupImage(null)} />
+            <ImageViewer src={popupImage} alt={popupAlt} isOpen={!!popupImage} onClose={() => setPopupImage(null)} />
 
             {loading ? <div className="text-center text-gray-400 py-12">Loading posts...</div> : (
                 <div className="space-y-4">
@@ -123,7 +124,7 @@ export default function Published() {
                                                     src={post.imageUrl}
                                                     alt={post.topic}
                                                     className="w-full h-full object-cover cursor-zoom-in"
-                                                    onClick={(e) => { e.stopPropagation(); setPopupImage(post.imageUrl); }}
+                                                    onClick={(e) => { e.stopPropagation(); setPopupImage(post.imageUrl); setPopupAlt(post.topic); }}
                                                 />
 
                                                 {/* BOTÃO PDF (SE TIVER) */}
