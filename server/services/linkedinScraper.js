@@ -77,27 +77,35 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
         }
 
         // 4. Navegação / Login
-        await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'networkidle2' });
+        // Timeout aumentado para 90s e waitUntil 'domcontentloaded' para ser mais ágil
+        try {
+            console.log("Variável de timeout: 90s. Aguardando Feed...");
+            await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 90000 });
+        } catch (navErr) {
+            console.warn("⚠️ Aviso: Navegação inicial demorou (Timeout), mas vamos tentar verificar se a página carregou.", navErr.message);
+        }
 
-        // Verifica login
-        const isLoggedIn = await page.$('.global-nav__content') !== null;
+        // Verifica login esperando pelo elemento (mais robusto que check imediato)
+        let isLoggedIn = false;
+        try {
+            // Espera até 15s pelo elemento da nav bar
+            await page.waitForSelector('.global-nav__content', { timeout: 15000 });
+            isLoggedIn = true;
+        } catch (e) { isLoggedIn = false; }
+
         if (!isLoggedIn) {
-            console.log("⚠️ Não logado (ou não carregou home).");
+            console.log("⚠️ Não logado (ou seletor global-nav não encontrado).");
 
             if (headless) {
-                // Em headless, se não logou com cookies, não há muito o que fazer sem credenciais
                 console.warn("🛑 Não autenticado e rodando em modo headless.");
-                // Tenta ir para login page ver se ajuda
             }
 
-            // Tenta ir para login page
-            if (page.url() !== 'https://www.linkedin.com/login') {
-                await page.goto('https://www.linkedin.com/login', { waitUntil: 'networkidle2' });
+            // Tenta ir para login page se já não estiver lá
+            if (!page.url().includes('login')) {
+                await page.goto('https://www.linkedin.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
             }
 
-            // Se rodar local tem interface, espera o user. Se headless, espera cookies mágicos? 
-            // RPA só funciona se tiver cookies validos ou user/pass hardcoded (não recomendado e não temos aqui).
-            // Vamos esperar um pouco caso seja latência, mas se for headless e sem cookies, vai falhar no scan.
+            // Se rodar local tem interface
             if (!headless) {
                 console.log("⌨️ Aguardando login manual pelo usuário...");
                 try {
@@ -109,7 +117,7 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                     console.error("Tempo de login esgotado.");
                 }
             } else {
-                console.log("🛑 Sem interface visual. Se cookies falharam, scan falhará.");
+                console.log("🛑 Sem interface visual. Login impossível sem cookies válidos.");
             }
         }
 
@@ -123,8 +131,9 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
             console.log(`🔎 Scan: ${post.topic} (${postUrl})`);
 
             try {
-                await page.goto(postUrl, { waitUntil: 'domcontentloaded' });
-                // Delay para carregar JS
+                // Timeout maior e domcontentloaded
+                await page.goto(postUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                // Delay para carregar JS (Feed posts precisam de hidratação)
                 await new Promise(r => setTimeout(r, 5000));
 
                 // Tenta expandir comentários
