@@ -11,11 +11,13 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
     console.log("🚀 Iniciando RPA LinkedIn Scraper...");
 
     const browser = await puppeteer.launch({
-        headless: headless, // False para ver o navegador (útil para debug e evitar bloqueios)
+        headless: headless, // Controlado pelo chamador
         defaultViewport: null,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // Crítico para Docker/Render
+            '--disable-gpu',
             '--start-maximized', // Janela maximizada
             '--disable-notifications' // Bloqueia notificações
         ]

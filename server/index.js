@@ -456,12 +456,13 @@ app.post('/api/rpa/sync-comments', async (req, res) => {
         const postsToScan = postsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // Executa o Scraper
-        // Se estiver rodando local, headless: false ajuda a ver. Em produção, true.
-        // Vamos forçar false aqui pois o usuário pediu "loga acessa navega" e provavelmente quer ver/interagir se precisar.
+        // Se estiver em produção (Render), DEVE ser headless. Se local, pode ser visual.
+        const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER || false;
+
         const result = await scrapeLinkedInComments(db, postsToScan, {
             email,
             password,
-            headless: false
+            headless: isProduction ? true : false
         });
 
         if (result.success) {
