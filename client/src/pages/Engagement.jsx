@@ -32,52 +32,8 @@ export default function Engagement() {
         }
     };
 
-    const handleSync = async () => {
-        setSyncing(true);
-        try {
-            const res = await fetch(getApiUrl('sync-comments'), { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-                alert(`Sincronização API concluída! ${data.newComments} novos comentários.`);
-                fetchComments();
-            } else {
-                alert('Erro na sincronização API: ' + data.error);
-            }
-        } catch (error) {
-            alert('Erro ao conectar com servidor.');
-        } finally {
-            setSyncing(false);
-        }
-    };
 
-    const [rpaLimit, setRpaLimit] = useState(5);
 
-    const handleRpaSync = async () => {
-        setSyncing(true);
-        try {
-            alert('Atenção: Uma janela do navegador será aberta no servidor. Se solicitado, faça login manualmente.');
-            const res = await fetch(getApiUrl('rpa/sync-comments'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ limit: rpaLimit })
-            });
-            const data = await res.json();
-            if (data.success) {
-                if (data.processing) {
-                    alert('⏳ Processamento Iniciado em Segundo Plano!\n\nO servidor está rodando o script. Pode continuar navegando. Verifique os comentários daqui a alguns minutos.');
-                } else {
-                    alert(`Sucesso! RPA capturou ${data.newComments} novos comentários.`);
-                    fetchComments();
-                }
-            } else {
-                alert('Erro no RPA: ' + data.error);
-            }
-        } catch (error) {
-            alert('Erro na conexão com RPA.');
-        } finally {
-            setSyncing(false);
-        }
-    };
 
     const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -166,36 +122,8 @@ export default function Engagement() {
                     <p className="text-gray-400 text-sm">Monitore e responda comentários do LinkedIn.</p>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
-                    <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-1 border border-gray-700 mr-2">
-                        <span className="text-xs text-gray-400 ml-2">Posts:</span>
-                        <input
-                            type="number"
-                            min="1"
-                            max="50"
-                            value={rpaLimit}
-                            onChange={(e) => setRpaLimit(parseInt(e.target.value))}
-                            className="bg-gray-900 text-white w-12 text-center text-sm rounded border border-gray-600 focus:border-purple-500 outline-none p-1"
-                        />
-                    </div>
+                    {/* Botões de Sync Removidos - Agora 100% Automático via Scheduler */}
 
-                    <button
-                        onClick={handleSync}
-                        disabled={syncing}
-                        className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg transition-all disabled:opacity-50 text-xs border border-gray-600"
-                        title="Tentativa via API Oficial"
-                    >
-                        <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-                        <span>API Sync</span>
-                    </button>
-                    <button
-                        onClick={handleRpaSync}
-                        disabled={syncing}
-                        className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg transition-all disabled:opacity-50 shadow-lg shadow-purple-900/20"
-                        title="Abrir navegador e varrer posts (RPA)"
-                    >
-                        <MonitorPlay className={`w-4 h-4 ${syncing ? 'animate-pulse' : ''}`} />
-                        <span>Sincronizar (RPA)</span>
-                    </button>
                     <button
                         onClick={handleClearComments}
                         disabled={syncing || loading}

@@ -28,3 +28,7 @@ server_debug.log
 server/server_debug.log
 debug_last_comments.json
 *.log
+
+# Cache
+.cache
+server/services/.chrome-cache
