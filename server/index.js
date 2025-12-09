@@ -456,19 +456,32 @@ app.post('/api/rpa/sync-comments', async (req, res) => {
         const postsToScan = postsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // Executa o Scraper
-        // Se estiver em produção (Render), DEVE ser headless. Se local, pode ser visual.
+        // Se estiver em produção (Render), DEVE ser headless e rodar em BACKGROUND para evitar Timeout HTTP (504)
         const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER || false;
 
-        const result = await scrapeLinkedInComments(db, postsToScan, {
+        const scraperOptions = {
             email,
             password,
             headless: isProduction ? true : false
-        });
+        };
 
-        if (result.success) {
-            res.json({ success: true, newComments: result.newComments });
+        if (isProduction) {
+            // BACKGROUND MODE
+            console.log("🚀 Executando RPA em Background (Produção detected)...");
+            scrapeLinkedInComments(db, postsToScan, scraperOptions)
+                .then(r => console.log("✅ RPA Background concluído:", r))
+                .catch(e => console.error("❌ Erro RPA Background:", e));
+
+            return res.json({ success: true, processing: true, message: "RPA iniciado em segundo plano. Verifique a lista em alguns instantes." });
         } else {
-            res.status(500).json({ error: result.error });
+            // LOCAL MODE (Wait for result)
+            const result = await scrapeLinkedInComments(db, postsToScan, scraperOptions);
+
+            if (result.success) {
+                res.json({ success: true, newComments: result.newComments });
+            } else {
+                res.status(500).json({ error: result.error });
+            }
         }
     } catch (e) {
         console.error(e);

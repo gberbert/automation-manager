@@ -58,7 +58,14 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
                 '--start-maximized',
-                '--disable-notifications'
+                '--disable-notifications',
+                // OTIMIZAÇÕES PARA SERVER FREE (RENDER):
+                '--disable-extensions',
+                '--mute-audio',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-background-networking'
             ]
         });
 
