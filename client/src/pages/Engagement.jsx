@@ -63,8 +63,12 @@ export default function Engagement() {
             });
             const data = await res.json();
             if (data.success) {
-                alert(`Sucesso! RPA capturou ${data.newComments} novos comentários.`);
-                fetchComments();
+                if (data.processing) {
+                    alert('⏳ Processamento Iniciado em Segundo Plano!\n\nO servidor está rodando o script. Pode continuar navegando. Verifique os comentários daqui a alguns minutos.');
+                } else {
+                    alert(`Sucesso! RPA capturou ${data.newComments} novos comentários.`);
+                    fetchComments();
+                }
             } else {
                 alert('Erro no RPA: ' + data.error);
             }

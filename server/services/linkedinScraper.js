@@ -71,32 +71,45 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
 
         const page = await browser.newPage();
 
-        // 3. Gestão de Sessão (Cookies)
+        // 3. Gestão de Sessão (Cookies - Híbrido: Arquivo Local + Firestore)
+        let cookiesLoaded = false;
+
+        // A. Tenta Arquivo Local
         if (fs.existsSync(COOKIES_PATH)) {
             try {
                 const cookiesString = fs.readFileSync(COOKIES_PATH);
                 const cookies = JSON.parse(cookiesString);
                 await page.setCookie(...cookies);
-                console.log("🍪 Cookies carregados.");
-            } catch (err) {
-                console.warn("⚠️ Erro ao ler cookies:", err.message);
-            }
+                console.log("🍪 Cookies carregados (Local File).");
+                cookiesLoaded = true;
+            } catch (err) { console.warn("⚠️ Erro ao ler cookies locais:", err.message); }
+        }
+
+        // B. Se não tem local, tenta Firestore (Ideal para Render/Cloud)
+        if (!cookiesLoaded) {
+            try {
+                const doc = await db.collection('settings').doc('linkedin_cookies').get();
+                if (doc.exists && doc.data().cookies) {
+                    const cloudCookies = JSON.parse(doc.data().cookies);
+                    await page.setCookie(...cloudCookies);
+                    console.log("☁️ Cookies carregados (Firestore Cloud).");
+                    cookiesLoaded = true;
+                }
+            } catch (err) { console.warn("⚠️ Erro ao ler cookies do Firestore:", err.message); }
         }
 
         // 4. Navegação / Login
-        // Timeout aumentado para 90s e waitUntil 'domcontentloaded' para ser mais ágil
         try {
             console.log("Variável de timeout: 90s. Aguardando Feed...");
             await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 90000 });
-        } catch (navErr) {
-            console.warn("⚠️ Aviso: Navegação inicial demorou (Timeout), mas vamos tentar verificar se a página carregou.", navErr.message);
+        } catch (e) {
+            console.warn("⚠️ Timeout ou erro ao carregar Feed. Verificando login...", e.message);
         }
 
-        // Verifica login esperando pelo elemento (mais robusto que check imediato)
+        // Verifica se realmente estamos logados
         let isLoggedIn = false;
         try {
-            // Espera até 15s pelo elemento da nav bar
-            await page.waitForSelector('.global-nav__content', { timeout: 15000 });
+            await page.waitForSelector('.global-nav__content', { timeout: 10000 });
             isLoggedIn = true;
         } catch (e) { isLoggedIn = false; }
 
@@ -104,7 +117,11 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
             console.log("⚠️ Não logado (ou seletor global-nav não encontrado).");
 
             if (headless) {
-                console.warn("🛑 Não autenticado e rodando em modo headless.");
+                // FAIL-FAST: Se for Headless e não estiver logado, abortar.
+                const msg = "🛑 ERRO FATAL: Modo Headless sem autenticação válida. Rode localmente para gerar cookies.";
+                console.error(msg);
+                await browser.close();
+                return { success: false, error: msg };
             }
 
             // Tenta ir para login page se já não estiver lá
@@ -112,19 +129,24 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                 await page.goto('https://www.linkedin.com/login', { waitUntil: 'domcontentloaded', timeout: 60000 });
             }
 
-            // Se rodar local tem interface
-            if (!headless) {
-                console.log("⌨️ Aguardando login manual pelo usuário...");
-                try {
-                    await page.waitForSelector('.global-nav__content', { timeout: 120000 }); // 2 minutos para logar
-                    const cookies = await page.cookies();
-                    fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
-                    console.log("💾 Novos cookies salvos.");
-                } catch (e) {
-                    console.error("Tempo de login esgotado.");
-                }
-            } else {
-                console.log("🛑 Sem interface visual. Login impossível sem cookies válidos.");
+            console.log("⌨️ Aguardando login manual pelo usuário...");
+            try {
+                await page.waitForSelector('.global-nav__content', { timeout: 120000 }); // 2 minutos para logar
+                const cookies = await page.cookies();
+                const cookiesJson = JSON.stringify(cookies, null, 2);
+
+                // Salva Local
+                fs.writeFileSync(COOKIES_PATH, cookiesJson);
+
+                // Salva Cloud (Firestore) para o Servidor usar depois
+                await db.collection('settings').doc('linkedin_cookies').set({
+                    cookies: cookiesJson,
+                    updatedAt: new Date()
+                });
+
+                console.log("💾 Novos cookies salvos (Local + Firestore).");
+            } catch (e) {
+                console.error("Tempo de login esgotado.");
             }
         }
 
