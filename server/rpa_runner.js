@@ -2,7 +2,15 @@ const { scrapeLinkedInComments } = require('./services/linkedinScraper');
 const admin = require('firebase-admin');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+
+// [DEBUG] Log de início bruto para verificar se o Scheduler está chamando o node corretamente
+const DEBUG_LOG_PATH = path.join(__dirname, 'rpa_scheduler_debug.txt');
+try {
+    fs.appendFileSync(DEBUG_LOG_PATH, `[${new Date().toISOString()}] Runner iniciado por: ${process.env.USERNAME || 'SYSTEM'}\n`);
+} catch (e) { }
+
+// Garante carregamento do .env com caminho absoluto
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // --- INICIALIZAÇÃO DO FIREBASE ---
 if (!admin.apps.length) {
@@ -65,9 +73,15 @@ async function run() {
         }
 
         // VERIFICAÇÃO 2: Cooldown (Intervalo Inteligente)
-        // Definindo intervalo mínimo de 1 hora entre execuções para evitar spam
-        const MIN_INTERVAL_MINUTES = 60;
-        const lastRun = settings.lastEngagementRun ? settings.lastEngagementRun.toDate() : new Date(0);
+        // Definindo intervalo mínimo de 5 minutos (PARA TESTES)
+        const MIN_INTERVAL_MINUTES = 5;
+        let lastRun = new Date(0);
+        if (settings.lastEngagementRun) {
+            // Se for Timestamp do Firestore (tem toDate), usa. Se for String/Date, usa direto.
+            lastRun = typeof settings.lastEngagementRun.toDate === 'function'
+                ? settings.lastEngagementRun.toDate()
+                : new Date(settings.lastEngagementRun);
+        }
         const now = new Date();
         const diffMinutes = (now - lastRun) / 1000 / 60;
 
@@ -75,6 +89,15 @@ async function run() {
 
         if (diffMinutes < MIN_INTERVAL_MINUTES) {
             console.log(`⏳ Cooldown ativo. Aguardando completar ${MIN_INTERVAL_MINUTES} min.`);
+
+            // Log opcional para debug visível no app, útil para validação
+            // await db.collection('system_logs').add({
+            //     type: 'info',
+            //     message: `RPA Skip: Cooldown ativo (${Math.floor(diffMinutes)}/${MIN_INTERVAL_MINUTES} min).`,
+            //     source: 'windows_scheduler_rpa',
+            //     timestamp: admin.firestore.FieldValue.serverTimestamp()
+            // });
+
             process.exit(0);
         }
 
@@ -102,12 +125,20 @@ async function run() {
 
         if (postsToScan.length === 0) {
             console.log("⚠️ Nenhum post publicado encontrado para escanear.");
+            await db.collection('system_logs').add({
+                type: 'info',
+                message: `RPA: Nenhum post publicado encontrado para escanear.`,
+                source: 'windows_scheduler_rpa',
+                timestamp: admin.firestore.FieldValue.serverTimestamp()
+            });
         } else {
             // EXECUTA O SCRAPER
+            // IMPORTANTE: headless: true para rodar em background (Task Scheduler)
+            // Se falhar cookies, ele aborta e loga erro.
             const result = await scrapeLinkedInComments(db, postsToScan, {
                 email: process.env.LINKEDIN_EMAIL,
                 password: process.env.LINKEDIN_PASSWORD,
-                headless: false
+                headless: true
             });
             console.log("📊 Resultado do Ciclo:", result);
 

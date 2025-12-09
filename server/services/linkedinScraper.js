@@ -355,14 +355,19 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                     let newCount = 0;
                     let updatedCount = 0;
                     for (const c of comments) {
-                        const cRef = db.collection('comments').doc(c.id);
+                        // Garante ID seguro para Firestore (sem barras)
+                        const safeId = c.id.replace(/\//g, '_');
+                        const cRef = db.collection('comments').doc(safeId);
                         const docSnap = await cRef.get();
 
                         if (!docSnap.exists) {
+                            console.log(`💾 Salvando novo comentário: ${safeId} | Post: ${post.id}`);
                             await cRef.set({
                                 ...c,
+                                id: safeId, // Atualiza ID no objeto
+                                createdAt: Date.now(), // FIX: Timestamp numérico para consistência com API
                                 postDbId: post.id,
-                                objectUrn: post.linkedinPostId, // FIX: Link do post
+                                objectUrn: post.linkedinPostId,
                                 postTopic: post.topic,
                                 syncedAt: new Date(),
                                 read: false,
@@ -371,11 +376,11 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                             });
                             newCount++;
                         } else {
-                            // SE JÁ EXISTE, ATUALIZA O TEXTO (Para refletir melhorias no parser)
+                            // SE JÁ EXISTE, ATUALIZA
                             await cRef.update({
                                 text: c.text,
                                 author: c.author,
-                                objectUrn: post.linkedinPostId, // Garante que updates antigos peguem o link
+                                objectUrn: post.linkedinPostId,
                                 _debugMethod: c._debugMethod,
                                 lastSeenAt: new Date()
                             });

@@ -251,68 +251,14 @@ async function runScheduler() {
         console.log("⏸️ Scheduler de Publicação está DESATIVADO nas configurações.");
     }
 
-    // --- 3. MONITORAMENTO DE ENGAJAMENTO (NOVO) ---
+    // --- 3. MONITORAMENTO DE ENGAJAMENTO (DESATIVADO - MIGRADO PARA RPA_RUNNER.JS) ---
+    /*
     const engagement = settings.scheduler?.engagement;
     if (engagement && engagement.enabled) {
-        const isTime = isTimeInWindow(engagement.time, currentHM);
-        console.log(`🔎 Check Engajamento: Agendado ${engagement.time} vs Atual ${currentHM} -> ${isTime ? '✅ HORA!' : '❌ Aguardando'}`);
-
-        if (isTime) {
-            const canRun = await checkAndSetLock('engagement_monitor', engagement.time);
-            if (canRun) {
-                console.log(`🚀 DISPARANDO MONITORAMENTO DE ENGAJAMENTO...`);
-                // Chama a função de sync internamente
-                const limitPosts = engagement.monitorCount || 20;
-                logSystem('info', `Iniciando varredura de comentários`, `Posts: ${limitPosts}`);
-
-                try {
-                    // Logic duplicated from /api/sync-comments to ensure standalone run
-                    const postsSnap = await db.collection('posts')
-                        .where('status', '==', 'published')
-                        .orderBy('publishedAt', 'desc')
-                        .limit(limitPosts)
-                        .get();
-
-                    let totalNew = 0;
-                    for (const doc of postsSnap.docs) {
-                        const p = doc.data();
-                        if (!p.linkedinPostId) continue;
-
-                        // ID no banco pode ser só numérico ou URN completa. fetchComments espera URN ou ID.
-                        // O linkedin.js lida com ID numérico? O endpoint precisa de URN: urn:li:share:ID ou urn:li:ugcPost:ID
-                        // O nosso "linkedinPostId" salvo geralmente é urn:li:share:123... se veio do result.id
-                        // Vamos garantir.
-                        const res = await fetchComments(p.linkedinPostId, settings);
-
-                        if (res.success && res.comments) {
-                            for (const c of res.comments) {
-                                // Verifica duplicidade
-                                const cRef = db.collection('comments').doc(c.id); // c.id é URN
-                                const cDoc = await cRef.get();
-                                if (!cDoc.exists) {
-                                    await cRef.set({
-                                        ...c,
-                                        postDbId: doc.id,
-                                        postTopic: p.topic,
-                                        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-                                        read: false,
-                                        replied: false
-                                    });
-                                    totalNew++;
-                                }
-                            }
-                        }
-                    }
-                    logSystem('success', `Monitoramento Finalizado`, `Novos Comentários: ${totalNew}`);
-                } catch (err) {
-                    console.error("Erro no Monitoramento:", err);
-                    logSystem('error', `Falha Monitoramento`, err.message);
-                }
-            }
-        }
-    } else {
-        console.log("⏸️ Scheduler de Engajamento está DESATIVADO.");
+        // ... Lógica antiga removida para evitar conflito com RPA Scheduler ...
+        console.log("⏸️ Monitoramento Legacy ignorado em favor do RPA Runner.");
     }
+    */
 
     console.log("🏁 Verificação concluída.\n");
 }
