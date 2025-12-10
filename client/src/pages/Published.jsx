@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { collection, query, getDocs, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { CheckCircle, Calendar, ChevronDown, ChevronUp, Undo2, Trash2, FileText, Image as ImageIcon } from 'lucide-react';
+import { CheckCircle, Calendar, ChevronDown, ChevronUp, Undo2, Trash2, FileText, Image as ImageIcon, ThumbsUp, MessageSquare, Eye, Share2 } from 'lucide-react';
 import ImageViewer from '../components/ImageViewer';
 
 export default function Published() {
@@ -101,6 +101,32 @@ export default function Published() {
                                                 <Calendar className="w-3 h-3" />
                                                 <span>Published: {post.publishedAt?.toDate ? new Date(post.publishedAt.toDate()).toLocaleDateString() : 'N/A'}</span>
                                             </div>
+
+                                            {/* SOCIAL METRICS */}
+                                            {post.socialActivityCounts && (
+                                                <div className="flex gap-4 mb-3">
+                                                    {post.socialActivityCounts.numLikes > 0 && (
+                                                        <div className="flex items-center gap-1 text-gray-400 text-xs" title="Likes">
+                                                            <ThumbsUp className="w-3 h-3 text-blue-400" /> {post.socialActivityCounts.numLikes}
+                                                        </div>
+                                                    )}
+                                                    {post.socialActivityCounts.numComments > 0 && (
+                                                        <div className="flex items-center gap-1 text-gray-400 text-xs" title="Comentários">
+                                                            <MessageSquare className="w-3 h-3 text-green-400" /> {post.socialActivityCounts.numComments}
+                                                        </div>
+                                                    )}
+                                                    {post.socialActivityCounts.numImpressions > 0 && (
+                                                        <div className="flex items-center gap-1 text-gray-400 text-xs" title="Impressões">
+                                                            <Eye className="w-3 h-3 text-yellow-400" /> {post.socialActivityCounts.numImpressions}
+                                                        </div>
+                                                    )}
+                                                    {post.socialActivityCounts.numShares > 0 && (
+                                                        <div className="flex items-center gap-1 text-gray-400 text-xs" title="Compartilhamentos">
+                                                            <Share2 className="w-3 h-3 text-purple-400" /> {post.socialActivityCounts.numShares}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                             {!isExpanded && <p className="text-gray-400 text-sm line-clamp-2">{truncateText(post.content)}</p>}
                                         </div>
                                         <button className="flex-shrink-0 text-gray-400 hover:text-white transition-colors">

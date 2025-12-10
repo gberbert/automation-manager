@@ -87,7 +87,7 @@ async function run() {
 
         console.log(`⏱️ Última execução: ${lastRun.toLocaleString()} (${Math.floor(diffMinutes)} min atrás).`);
 
-        if (diffMinutes < MIN_INTERVAL_MINUTES) {
+        if (diffMinutes < MIN_INTERVAL_MINUTES && !process.argv.includes('--force')) {
             console.log(`⏳ Cooldown ativo. Aguardando completar ${MIN_INTERVAL_MINUTES} min.`);
 
             // Log opcional para debug visível no app, útil para validação
@@ -133,12 +133,13 @@ async function run() {
             });
         } else {
             // EXECUTA O SCRAPER
-            // IMPORTANTE: headless: true para rodar em background (Task Scheduler)
-            // Se falhar cookies, ele aborta e loga erro.
+            // Verifica flag --manual para rodar com interface gráfica (útil para login/debug, e para capturar rede)
+            const isManualMode = process.argv.includes('--manual');
+
             const result = await scrapeLinkedInComments(db, postsToScan, {
                 email: process.env.LINKEDIN_EMAIL,
                 password: process.env.LINKEDIN_PASSWORD,
-                headless: true
+                headless: !isManualMode // Se for manual, headless = false
             });
             console.log("📊 Resultado do Ciclo:", result);
 
