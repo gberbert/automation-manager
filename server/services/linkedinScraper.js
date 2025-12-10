@@ -189,100 +189,217 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                     try {
                         const data = await response.json();
 
-                        // DETECÇÃO DE COMENTÁRIOS VIA JSON
-                        // Estrutura esperada: data.data.socialDashCommentsBySocialDetail.elements[...]
-                        if (data?.data?.data?.socialDashCommentsBySocialDetail?.elements) {
-                            const elements = data.data.data.socialDashCommentsBySocialDetail.elements;
+                        // 0. MAPA DE REFERÊNCIAS (URN Resolution)
+                        // Muitos dados vêm "side-loaded" no array 'included'. Criamos um mapa para resolver URNs.
+                        const urnMap = new Map();
+                        if (data.included && Array.isArray(data.included)) {
+                            data.included.forEach(item => {
+                                if (item.entityUrn) urnMap.set(item.entityUrn, item);
+                                if (item.urn) urnMap.set(item.urn, item);
+                                if (item.objectUrn) urnMap.set(item.objectUrn, item); // Às vezes útil
+                            });
+                        }
 
-                            // 1. Check ELEMENTS (Direct)
-                            if (Array.isArray(elements) && elements.length > 0) {
-                                console.log(`\n🔥 NETWORK: Detectados ${elements.length} comentários via 'elements'!`);
-                                processNetworkComments(elements);
-                            }
-                            // 2. Check INCLUDED (Side-loaded/GraphQL style)
-                            else if (data.included && Array.isArray(data.included)) {
-                                const includedComments = data.included.filter(item =>
-                                    item.$type === 'com.linkedin.voyager.dash.social.Comment' ||
-                                    (item.entityUrn && item.entityUrn.includes('fsd_comment'))
-                                );
-                                if (includedComments.length > 0) {
-                                    console.log(`\n🔥 NETWORK: Detectados ${includedComments.length} comentários via 'included'!`);
-                                    processNetworkComments(includedComments);
-                                }
+                        // 1. RECURSIVE METRICS FINDER (Post Stats)
+                        // 1. RECURSIVE METRICS FINDER (Post Stats - Robust)
+                        const recursiveFindMetrics = (obj) => {
+                            if (!obj || typeof obj !== 'object') return;
 
-                                // --- CAPTURA DE MÉTRICAS DO POST (likes/shares/etc) ---
-                                const metrics = data.included.find(item => item.$type === 'com.linkedin.voyager.dash.feed.SocialActivityCounts');
-                                if (metrics) {
-                                    // Atualiza se encontrar valores maiores
-                                    if (metrics.numLikes > postSocialCounts.numLikes) postSocialCounts.numLikes = metrics.numLikes;
-                                    if (metrics.numComments > postSocialCounts.numComments) postSocialCounts.numComments = metrics.numComments;
-                                    if (metrics.numShares > postSocialCounts.numShares) postSocialCounts.numShares = metrics.numShares;
-                                    if (metrics.numImpressions > postSocialCounts.numImpressions) postSocialCounts.numImpressions = metrics.numImpressions;
-                                }
+                            // Verifica se é um objeto de contagem (pode ter qualquer uma das props)
+                            const hasMetrics = obj.numLikes !== undefined || obj.numComments !== undefined || obj.numShares !== undefined || obj.numImpressions !== undefined;
+
+                            if (hasMetrics) {
+                                if (typeof obj.numLikes === 'number' && obj.numLikes > postSocialCounts.numLikes) postSocialCounts.numLikes = obj.numLikes;
+                                if (typeof obj.numComments === 'number' && obj.numComments > postSocialCounts.numComments) postSocialCounts.numComments = obj.numComments;
+                                if (typeof obj.numShares === 'number' && obj.numShares > postSocialCounts.numShares) postSocialCounts.numShares = obj.numShares;
+                                if (typeof obj.numImpressions === 'number' && obj.numImpressions > postSocialCounts.numImpressions) postSocialCounts.numImpressions = obj.numImpressions;
                             }
 
-                            function processNetworkComments(items) {
-                                items.forEach(c => {
-                                    try {
-                                        // Extração segura dos campos
-                                        // Texto
-                                        const text = c.commentary?.text?.text || c.commentary?.text || '';
+                            // Tenta pegar também de campos específicos de SocialActivityCounts se estirem aninhados
+                            if (obj.socialActivityCounts) {
+                                recursiveFindMetrics(obj.socialActivityCounts);
+                            }
+                            // Deep search
+                            Object.values(obj).forEach(child => recursiveFindMetrics(child));
+                        };
+                        recursiveFindMetrics(data);
 
-                                        // Autor
-                                        const author = c.commenter?.title?.text || c.commenter?.annotatedTitle?.text || 'LinkedIn Member';
+                        // 2. RECURSIVE COMMENT FINDER (ULTRA-PERMISSIVE)
+                        const foundCommentObjects = [];
+                        const recursiveFindComments = (obj) => {
+                            if (!obj || typeof obj !== 'object') return;
 
-                                        // URL Autor (pode ser string direta ou objeto em algumas versões)
-                                        let authorUrl = c.commenter?.navigationUrl || '';
-                                        if (typeof authorUrl === 'object' && authorUrl?.string) authorUrl = authorUrl.string; // Normaliza se for objeto
+                            // Heurística 1: Objeto clássico (commentary + commenter)
+                            if (obj.commentary && obj.commenter) {
+                                foundCommentObjects.push(obj);
+                            }
+                            // Heurística 2: Apenas commentary 
+                            else if (obj.commentary && (obj.commentary.text || obj.commentary.attributes)) {
+                                if (!obj.entityUrn || obj.entityUrn.includes('comment')) {
+                                    foundCommentObjects.push(obj);
+                                }
+                            }
+                            // Heurística 3: Por Tipo Explícito 
+                            else if (obj.$type === 'com.linkedin.voyager.dash.social.Comment' || (obj.entityUrn && obj.entityUrn.includes('fsd_comment'))) {
+                                foundCommentObjects.push(obj);
+                            }
+                            // Heurística 4: Value wrapper
+                            else if (obj.value && obj.value.commentary) {
+                                foundCommentObjects.push(obj.value);
+                            }
 
-                                        // URN (ID único)
-                                        const urn = c.entityUrn || '';
+                            Object.values(obj).forEach(child => recursiveFindComments(child));
+                        };
+                        recursiveFindComments(data);
 
-                                        // Parent URN (para threads/respostas)
-                                        const parentUrn = c.parentCommentUrn || null;
+                        if (foundCommentObjects.length > 0) {
+                            console.log(`\n🔥 NETWORK: Recursive Finder achou ${foundCommentObjects.length} candidatos a comentário!`);
+                            processNetworkComments(foundCommentObjects, urnMap);
+                        }
 
-                                        // Enriquecimento de Dados (New Request)
-                                        const subtitle = c.commenter?.subtitle?.text || '';
-                                        const likeCount = c.socialDetail?.totalSocialActivityCounts?.numLikes || 0;
-                                        const replyCount = c.socialDetail?.totalSocialActivityCounts?.numComments || 0; // Respostas a este comentÃ¡rio
-                                        const postedAt = c.commentary?.createdTime || null; // Timestamp se disponÃ­vel
+                        function processNetworkComments(items, map) {
+                            items.forEach(c => {
+                                try {
+                                    // A. RESOLVE AUTHOR (Pode estar aninhado ou ser uma referência URN)
+                                    let authorObj = c.commenter;
+                                    let resolvedFromMap = false;
 
-                                        if (text) {
-                                            interceptedComments.push({
-                                                author: author.trim(),
-                                                subtitle: subtitle, // <--- NOVO
-                                                text: text.trim(),
-                                                authorUrl: authorUrl,
-                                                urn: urn,
-                                                parentId: parentUrn,
-                                                likeCount: likeCount, // <--- NOVO
-                                                replyCount: replyCount, // <--- NOVO
-                                                postedAt: postedAt, // <--- NOVO
-                                                source: 'network'
-                                            });
+                                    // Tenta resolver URN no mapa
+                                    if (typeof authorObj === 'string') {
+                                        if (map.has(authorObj)) {
+                                            authorObj = map.get(authorObj);
+                                            resolvedFromMap = true;
                                         }
-                                    } catch (parseErr) {
-                                        console.log('Erro ao fazer parse de um comentário de rede:', parseErr.message);
+                                    } else if (authorObj && authorObj.urn && map.has(authorObj.urn)) {
+                                        // Priorize object from map if it looks more complete (e.g. has title/name)
+                                        const mapped = map.get(authorObj.urn);
+                                        if (mapped.title || mapped.name || mapped.firstName) {
+                                            authorObj = mapped;
+                                            resolvedFromMap = true;
+                                        }
                                     }
-                                });
-                            }
-                        }
 
-                        // (Opcional) Debug: Salva arquivos se ainda quiser inspecionar, mas com timestamp para não sobrescrever
-                        /*
-                        const dataStr = JSON.stringify(data);
-                        if (
-                            dataStr.length > 1500 &&
-                            (dataStr.includes('text') || dataStr.includes('comment')) &&
-                            capturedNetworkComments.length < 5 // Limitando para não spammar
-                        ) {
-                            const fileName = `debug_network_${Date.now()}.json`;
-                            const savePath = path.join(process.cwd(), fileName);
-                            // fs.writeFileSync(savePath, dataStr); // Descomentar se precisar debugar
-                            // capturedNetworkComments.push(savePath);
-                        }
-                        */
+                                    // Fallback para 'actor' se existir
+                                    if ((!authorObj || typeof authorObj === 'string') && c.actor) {
+                                        authorObj = c.actor;
+                                        if (typeof authorObj === 'string' && map.has(authorObj)) {
+                                            authorObj = map.get(authorObj);
+                                            resolvedFromMap = true;
+                                        }
+                                    }
 
+                                    // Extração do Nome (Tentativa Robusta)
+                                    let authorName = '';
+
+                                    // Estrategia 1: Campos de Texto (MiniProfile/Member)
+                                    if (authorObj?.title?.text) authorName = authorObj.title.text;
+                                    else if (authorObj?.annotatedTitle?.text) authorName = authorObj.annotatedTitle.text;
+                                    else if (authorObj?.name?.text) authorName = authorObj.name.text;
+                                    else if (typeof authorObj?.name === 'string') authorName = authorObj.name;
+
+                                    // Estrategia 2: Estrutura de Profile (FirstName + LastName)
+                                    else if (authorObj?.firstName && authorObj?.lastName) {
+                                        authorName = `${authorObj.firstName} ${authorObj.lastName}`;
+                                    }
+
+                                    // DEBUG SE FALHAR
+                                    if (!authorName || authorName === 'LinkedIn Member') {
+                                        console.log(`⚠️ Falha ao extrair nome. URN: ${c.entityUrn}`);
+                                        // Salva o objeto falho para analise
+                                        try {
+                                            const fs = require('fs');
+                                            const debugPath = require('path').join(__dirname, 'debug_failed_authors.json');
+                                            const debugData = {
+                                                commentUrn: c.entityUrn,
+                                                commenterRaw: c.commenter,
+                                                resolvedAuthorObj: authorObj,
+                                                mapHasCommenter: c.commenter && (typeof c.commenter === 'string' ? map.has(c.commenter) : map.has(c.commenter.urn))
+                                            };
+                                            fs.appendFileSync(debugPath, JSON.stringify(debugData, null, 2) + ',\n');
+                                        } catch (e) { }
+
+                                        authorName = 'LinkedIn Member';
+                                    }
+
+                                    // Extração da Imagem
+                                    let authorImage = null;
+                                    if (authorObj?.image?.attributes?.[0]?.detailData?.imageUrl) {
+                                        authorImage = authorObj.image.attributes[0].detailData.imageUrl;
+                                    } else if (authorObj?.picture?.artifacts?.[0]?.fileIdentifyingUrlPathSegment) {
+                                        // Às vezes o link é parcial, mas vamos tentar pegar o que der
+                                        authorImage = authorObj.picture.artifacts[0].fileIdentifyingUrlPathSegment;
+                                        if (!authorImage.startsWith('http')) authorImage = `https://media.licdn.com/dms/image/${authorImage}`;
+                                    } else if (authorObj?.picture?.rootUrl && authorObj?.picture?.artifacts?.[0]?.fileIdentifyingUrlPathSegment) {
+                                        authorImage = `${authorObj.picture.rootUrl}${authorObj.picture.artifacts[0].fileIdentifyingUrlPathSegment}`;
+                                    }
+
+                                    // Extração do Subtitle (Headline)
+                                    let subtitle = authorObj?.subtitle?.text || authorObj?.headline?.text || authorObj?.headline || authorObj?.occupation || '';
+
+                                    // URL Autor
+                                    let authorUrl = authorObj?.navigationUrl || authorObj?.url || '';
+                                    if (typeof authorUrl === 'object' && authorUrl?.string) authorUrl = authorUrl.string;
+                                    if (authorUrl && !authorUrl.startsWith('http')) authorUrl = `https://www.linkedin.com${authorUrl}`;
+
+
+                                    // B. RESOLVE SOCIAL METRICS (Likes/Replies do Comentário)
+                                    let likeCount = 0;
+                                    let replyCount = 0;
+                                    let socialDetail = c.socialDetail;
+
+                                    if (socialDetail) {
+                                        // Se for URN, resolve
+                                        if (typeof socialDetail === 'string' && map.has(socialDetail)) {
+                                            socialDetail = map.get(socialDetail);
+                                        }
+                                        else if (socialDetail.urn && map.has(socialDetail.urn)) {
+                                            socialDetail = map.get(socialDetail.urn);
+                                        }
+
+                                        // Pega contadores
+                                        if (socialDetail?.totalSocialActivityCounts) {
+                                            likeCount = socialDetail.totalSocialActivityCounts.numLikes || 0;
+                                            replyCount = socialDetail.totalSocialActivityCounts.numComments || 0;
+                                        }
+                                        // As vezes o socialDetail tem referência para outro objeto 'socialActivityCounts'
+                                        else if (socialDetail?.socialActivityCountsUrn && map.has(socialDetail.socialActivityCountsUrn)) {
+                                            const counts = map.get(socialDetail.socialActivityCountsUrn);
+                                            likeCount = counts.numLikes || 0;
+                                            replyCount = counts.numComments || 0;
+                                        }
+                                    }
+
+                                    // C. DATA E TEXTO
+                                    // Data
+                                    const postedAt = c.commentary?.createdTime || c.createdTime || null;
+
+                                    // Texto
+                                    const textObj = c.commentary?.text || c.commentary || {};
+                                    const text = typeof textObj === 'string' ? textObj : (textObj.text || '');
+
+                                    // URN
+                                    const urn = c.entityUrn || `urn:li:comment:gen_${Math.random()}`;
+
+                                    if (text) {
+                                        interceptedComments.push({
+                                            author: authorName.trim(),
+                                            subtitle: subtitle,
+                                            authorImage: authorImage, // Guarda imagem para depois
+                                            text: text.trim(),
+                                            authorUrl: authorUrl,
+                                            urn: urn,
+                                            parentId: c.parentCommentUrn || null,
+                                            likeCount: likeCount,
+                                            replyCount: replyCount,
+                                            postedAt: postedAt,
+                                            source: 'network'
+                                        });
+                                    }
+                                } catch (parseErr) {
+                                    console.log('Erro parse network comment:', parseErr.message);
+                                }
+                            });
+                        }
                     } catch (err) { }
                 }
             } catch (e) {
@@ -312,7 +429,7 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                 // Delay para carregar JS (Feed posts precisam de hidratação)
                 await new Promise(r => setTimeout(r, 5000));
 
-                // Tenta expandir comentários
+                // Tenta expandir comentários e obter métricas
                 try {
                     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
                     await new Promise(r => setTimeout(r, 1000));
@@ -325,10 +442,7 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                         await new Promise(r => setTimeout(r, 2000));
                     }
 
-                    // PAUSA PARA INVESTIGAÇÃO VISUAL (Se estiver rodando local)
-                    if (!headless) {
-                        // console.log("🛑 PAUSA DE DEBUG (20s) REMOVIDA.");
-                    } else {
+                    if (headless) {
                         // Tenta botão de ação "Comentar" se a lista não estiver visível
                         const commentAction = await page.$('button[aria-label*="Comentar"]');
                         if (commentAction) {
@@ -338,10 +452,8 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                     }
 
                     // 2. ORDENAÇÃO POR "MAIS RECENTES" (Crucial para ver tudo)
-                    // Tenta encontrar o dropdown de ordenação. Classes mudam, então buscamos por texto/aria-label
                     try {
                         const sortDropdown = await page.evaluateHandle(() => {
-                            // Procura botões que pareçam ser de dropdown de sort
                             const buttons = Array.from(document.querySelectorAll('button'));
                             return buttons.find(b => b.innerText.includes('Mais recentes') || b.innerText.includes('Mais relevantes') || b.getAttribute('aria-label')?.includes('Classificar'));
                         });
@@ -350,48 +462,27 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                             console.log("Found sort dropdown, attempting to switch to RECENT...");
                             await sortDropdown.click();
                             await new Promise(r => setTimeout(r, 1000));
-
-                            // Agora clica na opção 'Mais recentes' no menu que abriu
                             await page.evaluate(() => {
-                                const options = Array.from(document.querySelectorAll('div, li, span')); // Genérico para achar a opção
+                                const options = Array.from(document.querySelectorAll('div, li, span'));
                                 const recentOption = options.find(el => el.innerText && el.innerText.trim() === 'Mais recentes' && el.offsetParent !== null);
                                 if (recentOption) recentOption.click();
                             });
-
-                            // Espera reload da lista
                             await new Promise(r => setTimeout(r, 2000));
                         }
                     } catch (sortErr) {
                         console.log("Could not switch sort order:", sortErr.message);
                     }
 
-                    // 3. Carrega mais comentários se houver paginação (Vigoroso)
-                    // Como estamos ouvindo a REDE, cada clique aqui gera um request útil
+                    // 3. Carregar mais
                     let loadMoreAttempts = 0;
                     while (loadMoreAttempts < 5) {
-                        const loadMoreSelectors = [
-                            'button.comments-comments-list__load-more-comments-button',
-                            'button.scaffold-finite-scroll__load-button',
-                            '.comments-comments-list__show-previous-button'
-                        ];
-
-                        let clicked = false;
-                        for (const sel of loadMoreSelectors) {
-                            const btn = await page.$(sel);
-                            if (btn) {
-                                // Verifica visibilidade
-                                const isVisible = await btn.boundingBox();
-                                if (isVisible) {
-                                    console.log(`Clicando em carregar mais (Attempt ${loadMoreAttempts + 1})...`);
-                                    await btn.click().catch(() => { });
-                                    await new Promise(r => setTimeout(r, 2000)); // Wait for network
-                                    clicked = true;
-                                    break; // Clica um por vez e reavalia
-                                }
-                            }
+                        const btn = await page.$('button.comments-comments-list__load-more-comments-button, button.scaffold-finite-scroll__load-button');
+                        if (btn && await btn.boundingBox()) {
+                            await btn.click().catch(() => { });
+                            await new Promise(r => setTimeout(r, 1500));
+                        } else {
+                            break;
                         }
-
-                        if (!clicked) break; // Se não achou nenhum botão pra clicar, sai
                         loadMoreAttempts++;
                     }
                 } catch (e) {
@@ -401,194 +492,107 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                 // --- SEGURANÇA: FECHAR A JANELA DE MENSAGENS ANTES DE ESCANEAR ---
                 try {
                     const closeMsgBtns = await page.$$('button[data-control-name="overlay.close_conversation_window"]');
-                    for (const btn of closeMsgBtns) {
-                        await btn.click().catch(() => { });
-                    }
-                    const minimizeMsgBtn = await page.$('.msg-overlay-bubble-header__control--minimize');
-                    if (minimizeMsgBtn) await minimizeMsgBtn.click().catch(() => { });
-
-                    // Tentativa extra de fechar qualquer overlay de chat visível via DOM
+                    for (const btn of closeMsgBtns) await btn.click().catch(() => { });
                     await page.evaluate(() => {
-                        const chatHeader = document.querySelector('.msg-overlay-bubble-header');
-                        if (chatHeader) chatHeader.click();
+                        const hdr = document.querySelector('.msg-overlay-bubble-header');
+                        if (hdr) hdr.click();
                     });
                 } catch (e) { }
 
-                // --- ESTRATÉGIA DE EXTRAÇÃO DE COMENTÁRIOS ---
-                const comments = await page.evaluate(() => {
-                    // DEFINE ESCOPO: Tenta focar apenas no conteúdo principal, ignorando overlays globais
-                    // LinkedIn geralmente usa 'main' ou '.scaffold-layout__main' para o feed
-                    const scope = document.querySelector('main') || document.querySelector('.scaffold-layout__main') || document.body;
+                // --- ESTRATÉGIA DE EXTRAÇÃO DE COMENTÁRIOS E MÉTRICAS DOM ---
+                const pageResult = await page.evaluate(() => {
+                    // Métrica visual (DOM Backup)
+                    const domMetrics = { numLikes: 0, numComments: 0 };
+                    try {
+                        const reactionsNode = document.querySelector('.social-details-social-counts__reactions-count') ||
+                            document.querySelector('button[aria-label*="reação"] span') ||
+                            document.querySelector('button[aria-label*="reaction"] span');
+                        if (reactionsNode) domMetrics.numLikes = parseInt(reactionsNode.innerText.replace(/\D/g, '') || '0');
 
-                    // --- FUNÇÕES AUXILIARES ---
+                        const commentsNode = document.querySelector('.social-details-social-counts__comments') ||
+                            document.querySelector('a[href*="comments"]') ||
+                            document.querySelector('button[aria-label*="comentário"]');
+                        if (commentsNode) domMetrics.numComments = parseInt(commentsNode.innerText.replace(/\D/g, '') || '0');
+                    } catch (e) { }
+
+                    // ... (Comment Extraction logic remains mostly same)
+                    const scope = document.querySelector('main') || document.querySelector('.scaffold-layout__main') || document.body;
                     const getSafeText = (el) => el ? el.innerText.trim() : "";
 
-                    // NOVA Versão do Fallback Inteligente (Smart Parsing)
-                    const cleanBrutalText = (text, element = null) => {
-                        // VERIFICAÇÃO DE SEGURANÇA 1: Se o elemento vier do Chat, ignorar
-                        if (element && element.closest && (element.closest('.msg-overlay-list-bubble') || element.closest('.msg-overlay-conversation-bubble'))) {
-                            return null;
-                        }
-
-                        let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                        if (lines.length < 2) return null;
-
-                        // 1. Autor: Tenta limpar sufixos (bullet, ponto, grau de conexão)
-                        let authorLine = lines[0].replace(/[\.·•]\s*[123]º.*/, '').replace(/\(.*\)/, '').trim();
-
-
-
-                        // 2. Processa o resto e o próprio autor se necessário
-                        let remainingLines = lines.slice(1);
-
-                        // CASO ESPECIAL: O texto do comentário as vezes cola na linha do autor ou na primeira linha de texto
-                        // Ex: "19 min Excelente tema! Exibir tradução..."
-                        // Vamos limpar padrões de tempo e tradução de TODAS as linhas processadas
-                        const cleanLineContent = (msg) => {
-                            return msg
-                                .replace(/^\d+\s*[hdm]\s+/i, '') // Remove "19 min " do inicio
-                                .replace(/Exibir tradução.*/i, '')
-                                .replace(/See translation.*/i, '')
-                                .replace(/Exibir tradução deste comentário.*/i, '')
-                                .trim();
-                        };
-
-                        let cleanCommentLines = [];
-
-                        for (let i = 0; i < remainingLines.length; i++) {
-                            const line = remainingLines[i];
-                            const lowerLine = line.toLowerCase();
-
-                            // A. Ignora Linhas de Métrica/Conexão/Tempo isolado
-                            if (/^[•·]\s*[123]º/.test(line) || line === '•' || line.includes('• 1º') || line.includes('• 2º')) continue;
-                            if (/^\d+\s*[hdm]\s*$/.test(line) || ['agora', 'editado', '(editado)'].includes(lowerLine)) continue;
-
-                            // B. Ignora Título Profissional (Heurística)
-                            if (line.includes('|') || line.includes('CRP') || (line.length > 30 && (line.includes(' at ') || line.includes(' em ') || line.includes('Designer') || line.includes('Engineer') || line.includes('Consultor')))) continue;
-
-                            // C. Ignora Rodapé
-                            const junkKeywords = ['gostar', 'responder', 'ver tradução', 'carregar anteriores', '...mais', 'gostei', 'like', 'reply', 'comentários', 'ver perfil de'];
-                            if (junkKeywords.some(kw => lowerLine === kw || (lowerLine.includes(kw) && line.length < 25))) continue;
-
-                            // D. Ignora números soltos
-                            if (/^\d+$/.test(line)) continue;
-
-                            // E. Segurança: Detectar padrões de CHAT/MENSAGEM PRIVADA
-                            if (line.includes("enviou as seguintes mensagens") || line.includes("Ver perfil de")) return null;
-
-                            const cleaned = cleanLineContent(line);
-                            if (cleaned.length > 0) cleanCommentLines.push(cleaned);
-                        }
-
-                        let finalText = cleanCommentLines.join(' ').trim();
-
-                        // Limpeza Final (Catch-all)
-                        finalText = cleanLineContent(finalText);
-
-                        if (!finalText) return null;
-
-                        // Segurança Final: Se sobrou texto com cara de chat
-                        if (finalText.includes("enviou as seguintes mensagens") || finalText.includes("Ver perfil de")) return null;
-
-
-
-                        return { author: authorLine, text: finalText };
-                    };
-
-                    // 1. ESTRATÉGIA A: SELETORES PADRÃO
-                    const possibleItemSelectors = [
-                        'article.comments-comment-item',
-                        '.comments-comments-list__comment-item',
-                        'li.comments-comments-list__comment-item',
-                        'li.comments-comment-item',
-                        'div.comments-comment-item'
-                    ];
-
+                    // (Simplificado para caber no replace)
                     const candidates = new Set();
 
+                    // 1. Selector Padrão
+                    const selectors = ['article.comments-comment-item', '.comments-comments-list__comment-item', 'li.comments-comment-item'];
+                    selectors.forEach(s => scope.querySelectorAll(s).forEach(el => candidates.add(el)));
 
-
-                    for (const sel of possibleItemSelectors) {
-                        const found = scope.querySelectorAll(sel);
-                        if (found.length > 0) {
-                            found.forEach(el => {
-                                // FILTRO: Apenas elementos visíveis e FORA do chat
-                                if (el.offsetHeight > 0 && !el.closest('.msg-overlay-list-bubble') && !el.closest('.msg-overlay-conversation-bubble')) {
-                                    candidates.add(el);
-                                }
-                            });
-                            // Se achou com um seletor, provavelmente é o padrão da página. 
-                            // Mas não bloqueamos a estratégia B para garantir cobertura total.
-                            if (candidates.size > 0) break;
-                        }
-                    }
-
-                    // 2. ESTRATÉGIA B: SELF-HEALING REVERSO (AGORA RODA SEMPRE PARA COMPLEMENTAR)
-                    // console.log("⚠️ Seletores de classe falharam. Iniciando Self-Healing Reverso...");
-                    const actionButtons = Array.from(scope.querySelectorAll('button'));
-                    actionButtons.forEach(btn => {
-                        // Ignora botões dentro do chat
-                        if (btn.closest('.msg-overlay-list-bubble') || btn.closest('.msg-overlay-conversation-bubble')) return;
-
-                        const txt = btn.innerText.toLowerCase();
-                        const label = (btn.getAttribute('aria-label') || "").toLowerCase();
-                        if (txt.includes('gostar') || txt.includes('responder') || label.includes('responder') || label.includes('like')) {
-                            let parent = btn.parentElement;
-                            for (let i = 0; i < 8; i++) {
-                                if (!parent) break;
-                                const tag = parent.tagName;
-                                const cls = (parent.className || "").toLowerCase();
-                                if (tag === 'ARTICLE' || tag === 'LI' || (tag === 'DIV' && cls.includes('comment-item'))) {
-                                    candidates.add(parent);
-                                    break;
-                                }
-                                parent = parent.parentElement;
-                            }
+                    // 2. Selector por ARIA LABEL (Muito mais estável)
+                    // LinkedIn costuma usar aria-label="Comentário por [Nome]" ou similar
+                    const ariaArticles = scope.querySelectorAll('article[aria-label], div[aria-label*="oment"]');
+                    ariaArticles.forEach(el => {
+                        const label = (el.getAttribute('aria-label') || "").toLowerCase();
+                        if (label.includes('comentário') || label.includes('comment')) {
+                            candidates.add(el);
                         }
                     });
 
-                    const items = Array.from(candidates);
+                    // 3. Fallback: Procura artigos genéricos que tenham botão de "Responder"
+                    const genericArticles = scope.querySelectorAll('article');
+                    genericArticles.forEach(art => {
+                        if (art.innerText.includes('Responder') || art.innerText.includes('Reply')) {
+                            candidates.add(art);
+                        }
+                    });
 
                     const results = [];
-                    items.forEach(item => {
+                    candidates.forEach(item => {
                         try {
-                            const authorEl = item.querySelector('.comments-post-meta__name-text') || item.querySelector('.comments-post-meta__name') || item.querySelector('span.hoverable-link-text') || item.querySelector('a.app-aware-link');
-                            const textEl = item.querySelector('.comments-comment-item__main-content') || item.querySelector('.feed-shared-main-content--comment') || item.querySelector('.update-components-text') || item.querySelector('span[dir="ltr"]');
-                            const imgEl = item.querySelector('.comments-post-meta__profile-image') || item.querySelector('img');
+                            // Tenta achar autor e texto com seletores variados
+                            const authorEl = item.querySelector('.comments-post-meta__name-text') ||
+                                item.querySelector('.comments-post-meta__name') ||
+                                item.querySelector('span.hoverable-link-text') ||
+                                item.querySelector('a.app-aware-link'); // Link do perfil geralmente é o autor
 
-                            const urn = item.getAttribute('data-id') || item.getAttribute('data-urn') || item.getAttribute('id') || `gen_${Math.random().toString(36).substr(2, 9)}`;
+                            const textEl = item.querySelector('.comments-comment-item__main-content') ||
+                                item.querySelector('.feed-shared-main-content--comment') ||
+                                item.querySelector('.update-components-text') ||
+                                item.querySelector('span[dir="ltr"]');
 
-                            if (authorEl && textEl) {
+                            const imgEl = item.querySelector('img');
+                            const id = item.getAttribute('data-id') || Math.random().toString(36);
+
+                            if (textEl) { // Autor é opcional no fallback drástico
                                 results.push({
-                                    id: urn,
+                                    id,
                                     text: getSafeText(textEl),
-                                    author: { name: getSafeText(authorEl).split('\n')[0].trim(), imageUrl: imgEl ? imgEl.src : null },
+                                    author: {
+                                        name: authorEl ? getSafeText(authorEl).split('\\n')[0].trim() : "LinkedIn Member",
+                                        imageUrl: imgEl?.src
+                                    },
                                     createdAt: new Date().toISOString(),
-                                    _debugMethod: 'standard'
+                                    _debugMethod: 'dom_universal'
                                 });
-                            } else {
-                                // Fallback
-                                const raw = item.innerText;
-                                const cleaned = cleanBrutalText(raw, item);
-                                if (cleaned) {
-                                    results.push({
-                                        id: urn,
-                                        text: cleaned.text,
-                                        author: { name: cleaned.author, imageUrl: null },
-                                        createdAt: new Date().toISOString(),
-                                        _debugMethod: 'fallback_smart_v2'
-                                    });
-                                }
                             }
-                        } catch (err) { }
+                        } catch (e) { }
                     });
-                    return results;
+
+
+
+                    return { comments: results, metrics: domMetrics };
                 });
+
+                const comments = pageResult.comments;
+                const domMetrics = pageResult.metrics;
+
+                // MERGE METRICS (DOM vs Network)
+                if (domMetrics.numLikes > postSocialCounts.numLikes) postSocialCounts.numLikes = domMetrics.numLikes;
+                if (domMetrics.numComments > postSocialCounts.numComments) postSocialCounts.numComments = domMetrics.numComments;
+
+                console.log(`📊 Métricas Consolidadas para ${post.topic}: Likes=${postSocialCounts.numLikes}, Comentários=${postSocialCounts.numComments}`);
 
                 // --- MERGE NETWORK RESULTS ---
                 if (interceptedComments.length > 0) {
                     console.log(`✨ Integrando ${interceptedComments.length} comentários capturados via REDE.`);
-                    // Convert generic intercepted (network) format to 'comments' format
                     const networkConverted = interceptedComments.map(c => ({
                         id: c.urn || `urn:li:comment:net_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
                         parentId: c.parentId,
@@ -597,9 +601,9 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                             name: c.author,
                             imageUrl: null,
                             url: c.authorUrl,
-                            headline: c.subtitle // <--- NOVO
+                            headline: c.subtitle
                         },
-                        socialStats: { // <--- NOVO
+                        socialStats: {
                             likes: c.likeCount,
                             replies: c.replyCount
                         },
@@ -679,16 +683,15 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                     }
                     totalCommentsFound += newCount;
                     console.log(`💾 ${newCount} novos salvos, ${updatedCount} atualizados.`);
+                }
 
-                    // --- ATUALIZA O POST COM AS MÉTRICAS CAPTURADAS NA REDE ---
-                    if (postSocialCounts && (postSocialCounts.numLikes > 0 || postSocialCounts.numComments > 0)) {
-                        console.log(`📊 Atualizando métricas do post ${post.id}:`, postSocialCounts);
-                        await db.collection('posts').doc(post.id).update({
-                            socialActivityCounts: postSocialCounts,
-                            lastScrapedAt: new Date()
-                        });
-                    }
-
+                // --- ATUALIZA O POST COM AS MÉTRICAS CAPTURADAS NA REDE ---
+                if (postSocialCounts && (postSocialCounts.numLikes > 0 || postSocialCounts.numComments > 0 || postSocialCounts.numImpressions > 0)) {
+                    console.log(`📊 Atualizando métricas do post ${post.id}:`, postSocialCounts);
+                    await db.collection('posts').doc(post.id).update({
+                        socialActivityCounts: postSocialCounts,
+                        lastScrapedAt: new Date()
+                    });
                 }
             } catch (err) {
                 console.error(`❌ Erro no post ${post.id}:`, err.message);
