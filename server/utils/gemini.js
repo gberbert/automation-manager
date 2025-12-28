@@ -7,9 +7,26 @@ function forceCleanText(text) {
     let clean = text.replace(/```json/gi, '').replace(/```/g, '').trim();
     if (clean.startsWith('{')) clean = clean.substring(1);
     if (clean.endsWith('}')) clean = clean.substring(0, clean.length - 1);
+
+    // Remove specific keys common in leaks
     clean = clean.replace(/"content"\s*:\s*"/i, '').replace(/"content"\s*:\s*`/i, '');
-    const imagePromptIndex = clean.search(/",\s*"imagePrompt"/i);
-    if (imagePromptIndex !== -1) clean = clean.substring(0, imagePromptIndex);
+
+    // Aggressive cut at imagePrompt or image_prompt
+    const patterns = [
+        /",\s*"imagePrompt"/i,
+        /"\s*,\s*"imagePrompt"/i,
+        /"imagePrompt"\s*:/i,
+        /"image_prompt"\s*:/i
+    ];
+
+    for (const p of patterns) {
+        const idx = clean.search(p);
+        if (idx !== -1) {
+            clean = clean.substring(0, idx);
+            break;
+        }
+    }
+
     clean = clean.replace(/\[Link.*?\]/gi, '').replace(/\[Inserir.*?\]/gi, '');
     return clean.replace(/"\s*$/, '').replace(/`\s*$/, '').replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/\\"/g, '"').trim();
 }
@@ -17,13 +34,29 @@ function forceCleanText(text) {
 function robustParse(text) {
     try {
         let jsonCandidate = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        jsonCandidate = jsonCandidate.replace(/(?<=: ")([\s\S]*?)(?=",\s*"imagePrompt")/g, (match) => match.replace(/\n/g, "\\n"));
+        // Fix common unescaped quotes inside content before valid imagePrompt key
+        // Look for content value until imagePrompt key starts
+        jsonCandidate = jsonCandidate.replace(/(?<=: ")([\s\S]*?)(?=",\s*"imagePrompt")/g, (match) => {
+            return match.replace(/(?<!\\)"/g, '\\"').replace(/\n/g, "\\n");
+        });
+
         const obj = JSON.parse(jsonCandidate);
         return { content: obj.content || "", imagePrompt: obj.imagePrompt || "" };
     } catch (e) {
-        const contentMatch = text.match(/"content"\s*:\s*"([\s\S]*?)(?=",)/);
-        const imageMatch = text.match(/"imagePrompt"\s*:\s*"([\s\S]*?)(?="|\})/);
-        return { content: contentMatch ? contentMatch[1] : text, imagePrompt: imageMatch ? imageMatch[1] : "" };
+        // Fallback: Use Regex to extract
+        const contentMatch = text.match(/"content"\s*:\s*"([\s\S]*?)(?=",\s*"imagePrompt"|"\s*,\s*"imagePrompt"|"\s*,\s*"image_prompt"|}$)/);
+        const imageMatch = text.match(/"image(Prompt|_prompt)"\s*:\s*"([\s\S]*?)(?="|\})/);
+
+        let extractedContent = contentMatch ? contentMatch[1] : text;
+
+        // Final safety net: if content still looks like it has the imagePrompt key at the end (regex fail)
+        const leakCheck = extractedContent.search(/"image(Prompt|_prompt)"\s*:/);
+        if (leakCheck !== -1) extractedContent = extractedContent.substring(0, leakCheck);
+
+        return {
+            content: extractedContent,
+            imagePrompt: imageMatch ? imageMatch[2] : ""
+        };
     }
 }
 

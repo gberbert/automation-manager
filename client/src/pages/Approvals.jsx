@@ -86,7 +86,17 @@ export default function Approvals() {
     // Handlers
     const handleApprove = async (id) => {
         try {
-            await updateDoc(doc(db, 'posts', id), { status: 'approved' });
+            // Recupere o post atual para limpar o conteúdo antes de aprovar
+            const postToApprove = posts.find(p => p.id === id);
+            if (!postToApprove) return;
+
+            // Limpa o conteúdo (remove vazamentos de JSON/Prompt) garantindo que o que vai para o LinkedIn é limpo
+            const cleanBody = safeContent(postToApprove.content);
+
+            await updateDoc(doc(db, 'posts', id), {
+                status: 'approved',
+                content: cleanBody
+            });
             fetchPosts();
             setExpandedPost(null);
             setEditingPost(null);
@@ -111,9 +121,38 @@ export default function Approvals() {
     };
     const safeContent = (content) => {
         if (!content) return '';
-        if (typeof content === 'string') return content;
-        if (typeof content === 'object') return content.body || content.text || content.headline || JSON.stringify(content);
-        return String(content);
+        let text = '';
+        if (typeof content === 'string') text = content;
+        else if (typeof content === 'object') text = content.body || content.text || content.headline || JSON.stringify(content);
+        else text = String(content);
+
+        // --- CLEANUP LOGIC ---
+        // Previne que vazamentos de "imagePrompt" ou JSON mal formatado contem caracteres ou sejam publicados.
+        // Padrões comuns de vazamento:
+        // ...texto... "imagePrompt": "..."
+        // ...texto... ,"imagePrompt": ...
+
+        const leakPatterns = [
+            /barely visible/i, // Exemplo placeholder se houver
+            /"\s*,\s*"imagePrompt"/i,
+            /"imagePrompt"\s*:/i,
+            /"image_prompt"\s*:/i
+        ];
+
+        for (const p of leakPatterns) {
+            const idx = text.search(p);
+            if (idx !== -1) {
+                text = text.substring(0, idx);
+                // Limpa virgulas ou aspas finais que sobraram do corte
+                text = text.replace(/,\s*$/, '').replace(/"\s*$/, '').trim();
+                break;
+            }
+        }
+
+        // Remove aspas sobrando no final se parece ser resto de JSON
+        if (text.match(/"\s*$/)) text = text.replace(/"\s*$/, '');
+
+        return text;
     };
 
     const handleEdit = (post) => {
