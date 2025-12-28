@@ -33,6 +33,7 @@ export default function Approvals() {
     const [regenModalOpen, setRegenModalOpen] = useState(false);
     const [regenInstruction, setRegenInstruction] = useState('');
     const [regenTargetPost, setRegenTargetPost] = useState(null);
+    const [regenMode, setRegenMode] = useState('inject'); // 'inject' | 'overwrite'
 
     const fileInputRef = useRef(null);
 
@@ -150,6 +151,7 @@ export default function Approvals() {
     const handleRegenerateImage = (post) => {
         setRegenTargetPost(post);
         setRegenInstruction('');
+        setRegenMode('inject');
         setRegenModalOpen(true);
     };
 
@@ -167,9 +169,18 @@ export default function Approvals() {
             };
 
             // Constrói o prompt com a instrução extra, se houver
-            let finalPrompt = regenTargetPost.imagePrompt || `Photo about ${regenTargetPost.topic}`;
-            if (regenInstruction.trim()) {
-                finalPrompt += `. INSTRUCTION: ${regenInstruction.trim()}`;
+            let finalPrompt;
+
+            if (regenMode === 'overwrite') {
+                // Modo Sobrescrever: O prompt é exatamente o que o usuário digitou.
+                // Se estiver vazio, usamos o tópico como fallback mínimo.
+                finalPrompt = regenInstruction.trim() || `Photo about ${regenTargetPost.topic}`;
+            } else {
+                // Modo Injection (Padrão): Adiciona instrução ao prompt existente
+                finalPrompt = regenTargetPost.imagePrompt || `Photo about ${regenTargetPost.topic}`;
+                if (regenInstruction.trim()) {
+                    finalPrompt += `. INSTRUCTION: ${regenInstruction.trim()}`;
+                }
             }
 
             const response = await fetch(getApiUrl('regenerate-image'), {
@@ -527,14 +538,42 @@ export default function Approvals() {
                         </div>
                         <div className="p-6 space-y-4">
                             <p className="text-sm text-gray-300">
-                                Deseja adicionar algum direcionamento extra para a criação da nova imagem?
-                                <br /><span className="text-xs text-gray-500">(Deixe em branco para apenas tentar novamente com o prompt original)</span>
+                                Como deseja ajustar a imagem?
                             </p>
+
+                            <div className="flex gap-4 p-2 bg-gray-800 rounded-lg">
+                                <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 p-2 rounded flex-1">
+                                    <input
+                                        type="radio"
+                                        name="regenMode"
+                                        checked={regenMode === 'inject'}
+                                        onChange={() => setRegenMode('inject')}
+                                        className="accent-purple-500 w-4 h-4"
+                                    />
+                                    <div>
+                                        <div className="text-white text-sm font-bold">Refinar (Injection)</div>
+                                        <div className="text-xs text-gray-400">Adiciona detalhes ao prompt atual.</div>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-700 p-2 rounded flex-1">
+                                    <input
+                                        type="radio"
+                                        name="regenMode"
+                                        checked={regenMode === 'overwrite'}
+                                        onChange={() => setRegenMode('overwrite')}
+                                        className="accent-purple-500 w-4 h-4"
+                                    />
+                                    <div>
+                                        <div className="text-white text-sm font-bold">Sobrescrever</div>
+                                        <div className="text-xs text-gray-400">Cria um prompt totalmente novo.</div>
+                                    </div>
+                                </label>
+                            </div>
                             <textarea
                                 value={regenInstruction}
                                 onChange={(e) => setRegenInstruction(e.target.value)}
                                 className="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-white focus:border-purple-500 outline-none min-h-[100px]"
-                                placeholder="Ex: Deixe a imagem mais escura, remova o texto, estilo cyberpunk..."
+                                placeholder={regenMode === 'overwrite' ? "Digite o novo prompt completo..." : "Ex: Deixe a imagem mais escura, remova o texto, estilo cyberpunk..."}
                             />
                         </div>
                         <div className="p-4 border-t border-gray-700 bg-gray-800/30 rounded-b-xl flex justify-end gap-3">

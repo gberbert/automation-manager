@@ -206,18 +206,25 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                             if (!obj || typeof obj !== 'object') return;
 
                             // Verifica se é um objeto de contagem (pode ter qualquer uma das props)
-                            const hasMetrics = obj.numLikes !== undefined || obj.numComments !== undefined || obj.numShares !== undefined || obj.numImpressions !== undefined;
+                            // VARIAÇÕES COMUNS NA API LINKEDIN
+                            const likes = obj.numLikes ?? obj.likeCount ?? obj.likes;
+                            const comments = obj.numComments ?? obj.commentCount ?? obj.comments;
+                            const shares = obj.numShares ?? obj.shareCount ?? obj.shares;
+                            const impressions = obj.numImpressions ?? obj.impressionCount ?? obj.views;
 
-                            if (hasMetrics) {
-                                if (typeof obj.numLikes === 'number' && obj.numLikes > postSocialCounts.numLikes) postSocialCounts.numLikes = obj.numLikes;
-                                if (typeof obj.numComments === 'number' && obj.numComments > postSocialCounts.numComments) postSocialCounts.numComments = obj.numComments;
-                                if (typeof obj.numShares === 'number' && obj.numShares > postSocialCounts.numShares) postSocialCounts.numShares = obj.numShares;
-                                if (typeof obj.numImpressions === 'number' && obj.numImpressions > postSocialCounts.numImpressions) postSocialCounts.numImpressions = obj.numImpressions;
+                            if (likes !== undefined || comments !== undefined || shares !== undefined || impressions !== undefined) {
+                                if (typeof likes === 'number' && likes > postSocialCounts.numLikes) postSocialCounts.numLikes = likes;
+                                if (typeof comments === 'number' && comments > postSocialCounts.numComments) postSocialCounts.numComments = comments;
+                                if (typeof shares === 'number' && shares > postSocialCounts.numShares) postSocialCounts.numShares = shares;
+                                if (typeof impressions === 'number' && impressions > postSocialCounts.numImpressions) postSocialCounts.numImpressions = impressions;
                             }
 
                             // Tenta pegar também de campos específicos de SocialActivityCounts se estirem aninhados
                             if (obj.socialActivityCounts) {
                                 recursiveFindMetrics(obj.socialActivityCounts);
+                            }
+                            if (obj.socialDetail) { // Às vezes as métricas estão em socialDetail
+                                recursiveFindMetrics(obj.socialDetail);
                             }
                             // Deep search
                             Object.values(obj).forEach(child => recursiveFindMetrics(child));
@@ -296,6 +303,11 @@ async function scrapeLinkedInComments(db, postsToScan = [], options = {}) {
                                     else if (authorObj?.annotatedTitle?.text) authorName = authorObj.annotatedTitle.text;
                                     else if (authorObj?.name?.text) authorName = authorObj.name.text;
                                     else if (typeof authorObj?.name === 'string') authorName = authorObj.name;
+
+                                    // Estrategia Nova: MiniProfile direto
+                                    else if (authorObj?.miniProfile?.firstName && authorObj?.miniProfile?.lastName) {
+                                        authorName = `${authorObj.miniProfile.firstName} ${authorObj.miniProfile.lastName}`;
+                                    }
 
                                     // Estrategia 2: Estrutura de Profile (FirstName + LastName)
                                     else if (authorObj?.firstName && authorObj?.lastName) {

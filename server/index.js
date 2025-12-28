@@ -560,7 +560,7 @@ app.post('/api/regenerate-image', async (req, res) => {
         const settingsDoc = await db.collection('settings').doc('global').get();
         const settings = { ...settingsDoc.data(), activeFormat: 'image', forceImageGeneration: true };
         const media = await generateMedia(prompt, settings, logWrapper({ source: 'regenerate' }));
-        await db.collection('posts').doc(postId).update({ imageUrl: media.imageUrl, modelUsed: media.modelUsed });
+        await db.collection('posts').doc(postId).update({ imageUrl: media.imageUrl, modelUsed: media.modelUsed, imagePrompt: prompt });
         res.json({ success: true, imageUrl: media.imageUrl, modelUsed: media.modelUsed });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
