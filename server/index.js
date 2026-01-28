@@ -6,7 +6,7 @@ const path = require('path');
 
 // IMPORTS DOS UTILITÁRIOS
 const { generatePost, generateReaction, refineText } = require('./utils/gemini');
-const { publishPost, uploadImageOnly, postComment, fetchComments, replyToComment } = require('./utils/linkedin');
+const { publishPost, uploadImageOnly, postComment, fetchComments, replyToComment, exchangeToken } = require('./utils/linkedin');
 const { generateMedia, uploadToCloudinary, searchUnsplash } = require('./utils/mediaHandler');
 const { scrapeLinkedInComments } = require('./services/linkedinScraper');
 
@@ -583,6 +583,79 @@ app.get('/api/cron', async (req, res) => {
     } catch (e) {
         console.error("🔥 Erro Crítico no Cron:", e);
         res.status(500).json({ error: e.message });
+    }
+});
+
+// Rota de Callback do LinkedIn OAuth
+app.get('/auth/linkedin/callback', async (req, res) => {
+    const { code, error, error_description } = req.query;
+
+    if (error) {
+        return res.status(400).send(`<h1>Erro no Login</h1><p>${error_description}</p>`);
+    }
+
+    if (!code) {
+        return res.status(400).send("<h1>Código de autorização não encontrado.</h1>");
+    }
+
+    try {
+        // 1. Pegar credenciais do banco
+        const settingsDoc = await db.collection('settings').doc('global').get();
+        if (!settingsDoc.exists) throw new Error("Configurações não encontradas.");
+
+        const settings = settingsDoc.data();
+        const { linkedinClientId, linkedinClientSecret, linkedinRedirectUri } = settings;
+
+        if (!linkedinClientId || !linkedinClientSecret) {
+            throw new Error("Credenciais do LinkedIn (Client ID/Secret) não configuradas no Settings.");
+        }
+
+        // 2. Trocar code por token
+        // NOTA: O redirectUri deve ser IDENTICO ao usado no frontend
+        // O frontend usa: window.location.origin + '/auth/linkedin/callback' (provavelmente)
+        // Vamos garantir que usamos o que está salvo ou inferir do host se estiver vazio
+
+        // No client/src/pages/Linkedin.jsx o usuário salva o redirectUri. Vamos usar aquele.
+        const redirectUri = linkedinRedirectUri || `${req.protocol}://${req.get('host')}/auth/linkedin/callback`;
+
+        const { accessToken, expiresIn } = await exchangeToken(code, redirectUri, linkedinClientId, linkedinClientSecret);
+
+        // 3. Salvar no Firestore
+        await db.collection('settings').doc('global').update({
+            linkedinAccessToken: accessToken,
+            linkedinTokenExpiresIn: expiresIn,
+            linkedinTokenUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // 4. Fechar popup
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head><title>Conectado!</title></head>
+            <body style="background:#111827; color:white; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh;">
+                <h2 style="color:#4ade80">✅ Conectado com Sucesso!</h2>
+                <p>O token foi atualizado. Você pode fechar esta janela.</p>
+                <script>
+                    setTimeout(() => {
+                        if(window.opener) {
+                            window.opener.location.reload(); 
+                            window.close();
+                        }
+                    }, 2000);
+                </script>
+            </body>
+            </html>
+        `;
+        res.send(html);
+
+    } catch (e) {
+        console.error("Erro OAuth Callback:", e);
+        res.status(500).send(`
+            <body style="background:#111827; color:white; font-family:sans-serif;">
+                <h1 style="color:#ef4444">Erro na Autenticação</h1>
+                <p>${e.message}</p>
+            </body>
+        `);
     }
 });
 

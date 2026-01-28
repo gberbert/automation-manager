@@ -218,4 +218,31 @@ async function replyToComment(postUrn, parentCommentUrn, text, settings) {
     }
 }
 
-module.exports = { publishPost, uploadImageOnly, postComment, fetchComments, replyToComment };
+
+// --- PASSO 0: TROCAR CODE POR TOKEN (OAUTH) ---
+async function exchangeToken(code, redirectUri, clientId, clientSecret) {
+    console.log("🔄 Trocando Code por Token...");
+    const params = new URLSearchParams();
+    params.append('grant_type', 'authorization_code');
+    params.append('code', code);
+    params.append('redirect_uri', redirectUri);
+    params.append('client_id', clientId);
+    params.append('client_secret', clientSecret);
+
+    try {
+        const response = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', params, {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+
+        console.log("✅ Token recebido com sucesso.");
+        return {
+            accessToken: response.data.access_token,
+            expiresIn: response.data.expires_in
+        };
+    } catch (error) {
+        console.error("❌ Erro ao trocar token:", error.response?.data || error.message);
+        throw new Error(error.response?.data?.error_description || "Falha na troca do token");
+    }
+}
+
+module.exports = { publishPost, uploadImageOnly, postComment, fetchComments, replyToComment, exchangeToken };
