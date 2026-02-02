@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CheckSquare, Settings as SettingsIcon, LogOut, Menu, X, CheckCircle, FileCheck, Linkedin, Instagram } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Settings as SettingsIcon, LogOut, Menu, X, CheckCircle, FileCheck, Linkedin, Instagram, MessageCircle } from 'lucide-react';
 import { auth } from '../firebase';
 import { appVersion } from '../version'; // Importa a versão gerada pelo script
 import InstallPWA from './InstallPWA';
@@ -20,6 +20,8 @@ export default function Layout() {
         { path: '/approved', icon: FileCheck, label: 'Approved', group: 'main' },
         { path: '/published', icon: CheckCircle, label: 'Published', group: 'main' },
 
+
+        { path: '/repost', icon: MessageCircle, label: 'AI Assistant', group: 'main' },
         { type: 'divider' },
 
         { path: '/linkedin', icon: Linkedin, label: 'LinkedIn', group: 'social' },

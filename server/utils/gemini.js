@@ -125,26 +125,55 @@ async function markTopicAsFailed(topic) {
 }
 
 // --- GERAR REAÇÃO (MANTIDO) ---
-async function generateReaction(type, context, content, link, settings, image) {
+async function generateReaction(type, context, content, link, settings, image, targetComment = null, targetCommentImage = null) {
     if (!settings.geminiApiKey) throw new Error("Gemini Key Missing");
     const genAI = new GoogleGenerativeAI(settings.geminiApiKey);
     const model = genAI.getGenerativeModel({ model: settings.geminiModel || "gemini-2.5-flash" });
     const strategy = type === 'repost' ? settings.strategyRepost : settings.strategyComment;
     const template = strategy?.template || "Analise o conteúdo e escreva algo relevante.";
 
-    const prompt = `
-    VOCÊ ESTÁ NO PAPEL DE: ${context}
-    TAREFA: Escrever um ${type === 'repost' ? 'TEXTO PARA RECOMPARTILHAR (REPOST)' : 'COMENTÁRIO'} sobre o conteúdo abaixo.
-    CONTEÚDO ORIGINAL: "${content}". Link: ${link || 'N/A'}
-    ${image ? 'IMAGEM: Uma imagem foi fornecida como contexto principal.' : ''}
-    SEU OBJETIVO: ${template}
-    REGRAS: Seja natural. Use o tom de voz do perfil. Retorne APENAS o texto final. Idioma: ${settings.language === 'pt-BR' ? "Português (Brasil)" : "English"}
-    `;
+    let prompt = "";
+
+    if (type === 'reply') {
+        prompt = `
+        VOCÊ ESTÁ NO PAPEL DE: ${context}
+        TAREFA: Escrever uma RESPOSTA para um comentário recebido.
+        
+        CONTEXTO DO POST ORIGINAL: "${content}". Link: ${link || 'N/A'}
+        ${image ? 'IMAGEM DO POST: Uma imagem foi fornecida como contexto do post.' : ''}
+        
+        COMENTÁRIO QUE VOCÊ DEVE RESPONDER (TARGET): "${targetComment || '(Sem texto, possivelmente só imagem)'}"
+        ${targetCommentImage ? 'IMAGEM DO COMENTÁRIO: O usuário mandou um print/imagem no comentário.' : ''}
+
+        SEU OBJETIVO: ${template} (Adapte para ser uma resposta direta a esse usuário).
+        REGRAS: Seja natural, empático ou espirituoso conforme o papel. Retorne APENAS o texto final de resposta. Idioma: ${settings.language === 'pt-BR' ? "Português (Brasil)" : "English"}
+        `;
+    } else {
+        // Lógica Original (Repost / Comment Main)
+        prompt = `
+        VOCÊ ESTÁ NO PAPEL DE: ${context}
+        TAREFA: Escrever um ${type === 'repost' ? 'TEXTO PARA RECOMPARTILHAR (REPOST)' : 'COMENTÁRIO'} sobre o conteúdo abaixo.
+        CONTEÚDO ORIGINAL: "${content}". Link: ${link || 'N/A'}
+        ${image ? 'IMAGEM: Uma imagem foi fornecida como contexto principal.' : ''}
+        SEU OBJETIVO: ${template}
+        REGRAS: Seja natural. Use o tom de voz do perfil. Retorne APENAS o texto final. Idioma: ${settings.language === 'pt-BR' ? "Português (Brasil)" : "English"}
+        `;
+    }
 
     const parts = [{ text: prompt }];
+
+    // 1. Imagem Principal (do post)
     if (image && image.startsWith('data:image')) {
         const mimeType = image.split(';')[0].split(':')[1];
         const data = image.split(',')[1];
+        parts.push({ inlineData: { data, mimeType } });
+    }
+
+    // 2. Imagem do Comentário Alvo (se houver, e se for Reply)
+    if (type === 'reply' && targetCommentImage && targetCommentImage.startsWith('data:image')) {
+        const mimeType = targetCommentImage.split(';')[0].split(':')[1];
+        const data = targetCommentImage.split(',')[1];
+        // Nota: Gemini suporta multiplas imagens.
         parts.push({ inlineData: { data, mimeType } });
     }
 

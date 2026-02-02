@@ -298,11 +298,11 @@ app.post('/api/generate-content', async (req, res) => {
 // NOVA ROTA: GERAR REAÇÃO (Re-post / Comment)
 app.post('/api/generate-reaction', async (req, res) => {
     try {
-        const { type, context, content, link, image } = req.body;
+        const { type, context, content, link, image, targetComment, targetCommentImage } = req.body;
         console.log(`💬 Gerando Reação (${type})...`);
         const settingsDoc = await db.collection('settings').doc('global').get();
         const settings = settingsDoc.data();
-        const text = await generateReaction(type, context, content, link, settings, image);
+        const text = await generateReaction(type, context, content, link, settings, image, targetComment, targetCommentImage);
         res.json({ success: true, text });
     } catch (error) {
         console.error("Erro Reaction:", error);

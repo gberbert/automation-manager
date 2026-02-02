@@ -8,14 +8,19 @@ export default function Repost() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    // Dados de entrada
+
+    // Dados de entrada (Post Original / Contexto)
     const [incomingText, setIncomingText] = useState('');
     const [incomingLink, setIncomingLink] = useState('');
     const [selectedImage, setSelectedImage] = useState(null);
 
+    // Dados de entrada (Comentário Alvo - APENAS PARA REPLY)
+    const [targetCommentText, setTargetCommentText] = useState('');
+    const [targetCommentImage, setTargetCommentImage] = useState(null);
+
     // Configurações e Contextos
     const [settings, setSettings] = useState(null);
-    const [selectedAction, setSelectedAction] = useState(null); // 'authorial' | 'repost' | 'comment'
+    const [selectedAction, setSelectedAction] = useState(null); // 'authorial' | 'repost' | 'comment' | 'reply'
     const [selectedContext, setSelectedContext] = useState('');
 
     // Estados de Geração
@@ -148,6 +153,17 @@ export default function Repost() {
         }
     };
 
+    const handleTargetImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setTargetCommentImage(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     // AÇÃO 1: POST AUTORAL
     const handleAuthorialPost = async (overrideTopic = null) => {
         setLoadingAction('authorial');
@@ -196,7 +212,9 @@ export default function Repost() {
                     context: selectedContext,
                     content: incomingText,
                     link: incomingLink,
-                    image: selectedImage
+                    image: selectedImage,
+                    targetComment: targetCommentText, // Novo
+                    targetCommentImage: targetCommentImage // Novo
                 })
             });
             const result = await response.json();
@@ -212,6 +230,7 @@ export default function Repost() {
 
     // Renderizador da Seção de Contexto (Repost/Comment)
     const renderContextSelector = (type) => {
+        // Para 'reply', usamos a estratégia de 'comment' (ou criar uma nova no futuro)
         const strategyKey = type === 'repost' ? 'strategyRepost' : 'strategyComment';
         const contexts = settings?.[strategyKey]?.contexts || [];
 
@@ -241,7 +260,7 @@ export default function Repost() {
                     className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 mt-2"
                 >
                     {loadingAction === 'reaction' ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenTool className="w-5 h-5" />}
-                    Gerar {type === 'repost' ? 'Re-post' : 'Comentário'}
+                    {type === 'reply' ? 'Gerar Resposta' : (type === 'repost' ? 'Gerar Re-post' : 'Gerar Comentário')}
                 </button>
             </div>
         );
@@ -313,6 +332,46 @@ export default function Repost() {
             </div>
         );
     };
+
+    // Renderizador da Seção Reply (Input do Comentário Alvo) + Seletor de Contexto
+    const renderReplySection = () => {
+        return (
+            <div className="space-y-4 animate-fadeIn">
+                {/* 1. INPUT DO COMENTÁRIO RECEBIDO */}
+                <div className="bg-gray-800/50 p-4 rounded-lg border border-purple-500/30">
+                    <h4 className="text-purple-400 font-bold flex items-center gap-2 mb-2">
+                        <MessageCircle className="w-4 h-4" /> Comentário a Responder
+                    </h4>
+
+                    {/* Imagem do Comentário */}
+                    {targetCommentImage ? (
+                        <div className="relative w-full h-32 bg-black/30 rounded-lg overflow-hidden mb-2 border border-gray-600">
+                            <img src={targetCommentImage} alt="Target" className="w-full h-full object-contain" />
+                            <button onClick={() => setTargetCommentImage(null)} className="absolute top-2 right-2 bg-red-600 p-1 rounded-full text-white"><X className="w-3 h-3" /></button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 mb-2">
+                            <label className="cursor-pointer bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-xs flex items-center gap-1">
+                                <Upload className="w-3 h-3" /> Add Print/Imagem (Opcional)
+                                <input type="file" accept="image/*" onChange={handleTargetImageUpload} className="hidden" />
+                            </label>
+                        </div>
+                    )}
+
+                    <textarea
+                        value={targetCommentText}
+                        onChange={(e) => setTargetCommentText(e.target.value)}
+                        placeholder="Cole aqui o comentário que você recebeu..."
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-mono text-sm h-32"
+                    />
+                </div>
+
+                {/* 2. CONTEXTO (Reutiliza o seletor genérico) */}
+                {renderContextSelector('reply')}
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-3xl mx-auto space-y-8 animate-fadeIn pb-20">
             {/* CABEÇALHO */}
@@ -374,12 +433,23 @@ export default function Repost() {
                         <span className="font-bold">Post Autoral</span>
                         <span className="text-[10px] opacity-70">Novo post baseado na imagem</span>
                     </button>
+
+                    {/* Botão 4: Responder (Novo) */}
+                    <button onClick={() => { setSelectedAction('reply'); setSelectedContext(''); }} className={`p-4 rounded-xl border transition-all flex flex-col items-center gap-2 ${selectedAction === 'reply' ? 'bg-yellow-600/20 border-yellow-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400'}`}>
+                        <MessageCircle className="w-8 h-8 mb-1 text-yellow-500" />
+                        <span className="font-bold">Responder Comentário</span>
+                        <span className="text-[10px] opacity-70">Gerar resposta para um fã/hater</span>
+                    </button>
+
                 </div>
+                {/* Nota visual se for Reply: O Header vira "Contexto do Post" */}
+                {selectedAction === 'reply' && <p className="text-center text-xs text-yellow-500 font-bold mb-2">☝️ O conteúdo acima servirá de Contexto do Post Original</p>}
 
                 {/* PAINÉIS DE AÇÃO */}
                 {selectedAction === 'repost' && renderContextSelector('repost')}
                 {selectedAction === 'comment' && renderContextSelector('comment')}
                 {selectedAction === 'authorial' && renderAuthorialSection()}
+                {selectedAction === 'reply' && renderReplySection()}
             </div>
 
             {/* MODAL DE RESULTADO */}
